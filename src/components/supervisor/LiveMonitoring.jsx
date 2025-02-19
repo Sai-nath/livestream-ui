@@ -14,6 +14,11 @@ const LiveMonitoring = () => {
     const { socket, trackActivity } = useSocket();
     const { user } = useAuth();
 
+    const [peerConnections, setPeerConnections] = useState({});
+    const localVideoRef = useRef(null);
+    const remoteVideoRef = useRef(null);
+    const localStreamRef = useRef(null);
+
     useEffect(() => {
         fetchActiveStreams();
         fetchOfficers();
@@ -24,13 +29,99 @@ const LiveMonitoring = () => {
         socket.on('locationUpdate', handleLocationUpdate);
         socket.on('streamData', handleStreamData);
 
+        // Handle incoming stream offers
+        socket.on('streamOffer', async ({ investigationId, offer }) => {
+            try {
+                // Create new peer connection
+                const peerConnection = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+
+                // Store peer connection
+                setPeerConnections(prev => ({
+                    ...prev,
+                    [investigationId]: peerConnection
+                }));
+
+                // Set up local stream for supervisor's camera
+                const localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                localStreamRef.current = localStream;
+                localVideoRef.current.srcObject = localStream;
+                localVideoRef.current.style.order = "2"; // Place supervisor video at the bottom
+
+                // Add local tracks to peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle remote stream
+                peerConnection.ontrack = (event) => {
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.srcObject = event.streams[0];
+                        remoteVideoRef.current.style.order = "1"; // Place remote video at the top
+                    }
+                };
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('iceCandidate', {
+                            investigationId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+
+                // Set remote description (offer)
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+                // Create and send answer
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                socket.emit('streamAnswer', {
+                    investigationId,
+                    answer: peerConnection.localDescription
+                });
+
+            } catch (error) {
+                console.error('Error handling stream offer:', error);
+                toast.error('Error establishing video connection');
+            }
+        });
+
+        socket.on('iceCandidate', async ({ investigationId, candidate }) => {
+            try {
+                const peerConnection = peerConnections[investigationId];
+                if (peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        });
+
         return () => {
             socket.off('streamStarted', handleStreamStarted);
             socket.off('streamEnded', handleStreamEnded);
             socket.off('locationUpdate', handleLocationUpdate);
             socket.off('streamData', handleStreamData);
+            socket.off('streamOffer');
+            socket.off('iceCandidate');
+            // Clean up local stream
+            if (localStreamRef.current) {
+                localStreamRef.current.getTracks().forEach(track => track.stop());
+            }
+            // Clean up peer connections
+            Object.values(peerConnections).forEach(pc => pc.close());
         };
-    }, [socket]);
+    }, [socket, peerConnections]);
 
     const fetchActiveStreams = async () => {
         try {
@@ -103,36 +194,8 @@ const LiveMonitoring = () => {
 
     const handleStreamData = (data) => {
         if (selectedStream?.id === data.streamId && videoRef.current) {
-            if (data.type === 'offer') {
-                // Create and configure RTCPeerConnection
-                const peerConnection = new RTCPeerConnection({
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' }
-                    ]
-                });
-
-                // Set up event handlers
-                peerConnection.ontrack = (event) => {
-                    if (videoRef.current) {
-                        videoRef.current.srcObject = event.streams[0];
-                    }
-                };
-
-                // Handle the offer
-                peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
-                    .then(() => peerConnection.createAnswer())
-                    .then(answer => peerConnection.setLocalDescription(answer))
-                    .then(() => {
-                        socket.emit('stream:answer', {
-                            streamId: data.streamId,
-                            answer: peerConnection.localDescription
-                        });
-                    })
-                    .catch(error => {
-                        console.error('Error handling stream offer:', error);
-                        toast.error('Error connecting to stream');
-                    });
-            }
+            // Handle incoming stream data (e.g., WebRTC or video chunks)
+            console.log('Received stream data:', data);
         }
     };
 
@@ -149,7 +212,7 @@ const LiveMonitoring = () => {
     };
 
     return (
-        <div className="container mx-auto px-4 py-8">
+        <div className="live-monitoring-container">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Active Streams List */}
                 <div className="md:col-span-1">
@@ -194,12 +257,19 @@ const LiveMonitoring = () => {
                 <div className="md:col-span-2">
                     {selectedStream ? (
                         <div className="bg-white shadow rounded-lg p-4">
-                            <div className="aspect-w-16 aspect-h-9 mb-4">
+                            <div className="video-container">
                                 <video
-                                    ref={videoRef}
-                                    className="w-full h-full rounded-lg bg-black"
+                                    ref={remoteVideoRef}
                                     autoPlay
                                     playsInline
+                                    className="remote-video"
+                                />
+                                <video
+                                    ref={localVideoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                    className="local-video"
                                 />
                             </div>
                             <div className="flex items-center justify-between mb-4">

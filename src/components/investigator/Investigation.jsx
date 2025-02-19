@@ -15,6 +15,7 @@ const Investigation = () => {
     
     const videoRef = useRef(null);
     const mediaStreamRef = useRef(null);
+    const peerConnectionRef = useRef(null);
     const socket = useSocket();
     const { user } = useAuth();
 
@@ -82,57 +83,80 @@ const Investigation = () => {
 
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             mediaStreamRef.current = stream;
-            videoRef.current.srcObject = stream;
-            setIsStreaming(true);
-
-            // Initialize WebRTC connection
+            
+            // Create and configure peer connection
             const peerConnection = new RTCPeerConnection({
                 iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' }
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
                 ]
             });
 
-            // Add tracks to the peer connection
+            // Add local stream tracks to peer connection
             stream.getTracks().forEach(track => {
                 peerConnection.addTrack(track, stream);
             });
 
+            // Set up local video
+            videoRef.current.srcObject = stream;
+            videoRef.current.style.order = "1"; // Place local video at the top
+            setIsStreaming(true);
+
             // Create and send offer
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
-            
-            socket.emit('stream:offer', {
-                streamId: investigationId,
+
+            // Send the offer to the supervisor through socket
+            socket.emit('streamOffer', {
+                investigationId,
                 offer: peerConnection.localDescription
             });
 
             // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    socket.emit('stream:ice', {
-                        streamId: investigationId,
+                    socket.emit('iceCandidate', {
+                        investigationId,
                         candidate: event.candidate
                     });
                 }
             };
 
-            // Handle answer from supervisor
-            socket.on('stream:answer', async (data) => {
-                if (data.streamId === investigationId) {
-                    try {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-                    } catch (error) {
-                        console.error('Error setting remote description:', error);
-                        toast.error('Error establishing connection');
-                    }
-                }
-            });
+            // Store peer connection reference
+            peerConnectionRef.current = peerConnection;
 
         } catch (error) {
-            console.error('Error starting camera stream:', error);
+            console.error('Error starting stream:', error);
             toast.error('Error starting camera stream');
         }
     };
+
+    useEffect(() => {
+        socket.on('streamAnswer', async ({ answer }) => {
+            try {
+                if (peerConnectionRef.current) {
+                    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+                }
+            } catch (error) {
+                console.error('Error setting remote description:', error);
+            }
+        });
+
+        socket.on('iceCandidate', async ({ candidate }) => {
+            try {
+                if (peerConnectionRef.current) {
+                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        });
+
+        return () => {
+            socket.off('streamAnswer');
+            socket.off('iceCandidate');
+        };
+    }, [socket]);
 
     const stopStream = () => {
         if (mediaStreamRef.current) {

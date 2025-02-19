@@ -10,7 +10,7 @@
 
 .video-grid {
     display: grid;
-    grid-template-rows: 1fr 200px;
+    grid-template-columns: 1fr 300px;
     gap: 20px;
     height: calc(100% - 100px);
 }
@@ -25,13 +25,11 @@
 }
 
 .video-wrapper.remote {
-    grid-row: 1;
-    width: 100%;
+    grid-column: 1;
 }
 
 .video-wrapper.local {
-    grid-row: 2;
-    width: 100%;
+    grid-column: 2;
 }
 
 .remote-video,
@@ -133,6 +131,40 @@
     padding: 5px;
     font-size: 12px;
     text-align: center;
+}
+
+.video-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+}
+
+.remote-video {
+    width: 100%;
+    max-height: 70vh;
+    object-fit: cover;
+    border-radius: 8px;
+    background-color: #000;
+    order: 1; /* Back camera stream on top */
+}
+
+.local-video {
+    width: 100%;
+    max-height: 30vh;
+    object-fit: cover;
+    border-radius: 8px;
+    background-color: #000;
+    order: 2; /* Supervisor/local video at bottom */
+}
+
+@media (min-width: 768px) {
+    .local-video {
+        max-width: 320px;
+        align-self: flex-end;
+    }
 }
 
 /* Mobile Responsive Design */
