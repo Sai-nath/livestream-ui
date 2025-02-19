@@ -16,11 +16,13 @@ const InvestigatorDashboard = () => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState(new Map());
 
-    if (user?.role !== 'INVESTIGATOR') {
-        return <Navigate to="/login" />;
-    }
-
     useEffect(() => {
+        // Redirect to login if not authenticated
+        if (!user || user.role !== 'INVESTIGATOR') {
+            navigate('/login');
+            return;
+        }
+
         if (socket) {
             // Listen for initial online users list
             socket.on('online_users', (users) => {
@@ -46,26 +48,7 @@ const InvestigatorDashboard = () => {
                 socket.off('user_status_change');
             };
         }
-    }, [socket]);
-
-    const isUserOnline = (userId) => {
-        const user = onlineUsers.get(userId);
-        return user?.isOnline || false;
-    };
-
-    const menuItems = [
-        {
-            title: 'Assigned Claims',
-            path: '/investigator/claims',
-            icon: <FaClipboardCheck />,
-            badge: 0 // Will be updated with actual count
-        },
-        {
-            title: 'Active Investigation',
-            path: '/investigator/investigation',
-            icon: <FaSearch />
-        }
-    ];
+    }, [socket, user, navigate]);
 
     const handleLogout = async () => {
         try {
@@ -73,8 +56,22 @@ const InvestigatorDashboard = () => {
             navigate('/login');
         } catch (error) {
             console.error('Logout failed:', error);
+            toast.error('Logout failed');
         }
     };
+
+    const menuItems = [
+        {
+            title: 'Assigned Claims',
+            path: '/investigator/claims',
+            icon: <FaClipboardCheck />
+        },
+        {
+            title: 'Active Investigation',
+            path: '/investigator/investigation',
+            icon: <FaSearch />
+        }
+    ];
 
     const isActive = (path) => {
         return location.pathname.startsWith(path);
@@ -99,59 +96,48 @@ const InvestigatorDashboard = () => {
                     <div className="user-profile">
                         <FaUser className="profile-icon" />
                         <div className="user-details">
-                            <span className="user-name">{user.name}</span>
+                            <span className="user-name">{user?.name || 'Investigator'}</span>
                             <span className="user-role">Investigator</span>
                         </div>
                     </div>
                 </div>
 
-                <div className="nav-links">
+                <ul className="nav-items">
                     {menuItems.map((item) => (
-                        <button
-                            key={item.path}
-                            className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-                            onClick={() => {
-                                navigate(item.path);
-                                setMenuOpen(false);
-                            }}
-                        >
-                            <span className="icon">{item.icon}</span>
-                            <span className="title">{item.title}</span>
-                            {item.badge > 0 && (
-                                <span className="badge">{item.badge}</span>
-                            )}
-                        </button>
+                        <li key={item.path}>
+                            <a
+                                href={item.path}
+                                className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    navigate(item.path);
+                                    setMenuOpen(false);
+                                }}
+                            >
+                                {item.icon}
+                                <span>{item.title}</span>
+                            </a>
+                        </li>
                     ))}
-                </div>
-
-                <button className="logout-button" onClick={handleLogout}>
-                    <FaSignOutAlt />
-                    <span>Logout</span>
-                </button>
+                    <li>
+                        <button onClick={handleLogout} className="nav-item logout">
+                            <FaSignOutAlt />
+                            <span>Logout</span>
+                        </button>
+                    </li>
+                </ul>
             </nav>
 
             {/* Main Content */}
-            <main className={`main-content ${menuOpen ? 'blur' : ''}`} onClick={() => menuOpen && setMenuOpen(false)}>
+            <main className="main-content">
                 <Routes>
-                    <Route path="claims" element={<AssignedClaims onlineUsers={onlineUsers} isUserOnline={isUserOnline} />} />
-                    <Route path="investigation/:investigationId" element={<Investigation />} />
                     <Route path="/" element={<Navigate to="claims" replace />} />
+                    <Route path="claims" element={<AssignedClaims />} />
+                    <Route path="investigation" element={<Investigation />} />
+                    <Route path="investigation/:investigationId" element={<Investigation />} />
+                    <Route path="*" element={<Navigate to="claims" replace />} />
                 </Routes>
             </main>
-
-            {/* Mobile Bottom Navigation */}
-            <nav className="bottom-nav">
-                {menuItems.map((item) => (
-                    <button
-                        key={item.path}
-                        className={`bottom-nav-item ${isActive(item.path) ? 'active' : ''}`}
-                        onClick={() => navigate(item.path)}
-                    >
-                        <span className="icon">{item.icon}</span>
-                        <span className="label">{item.title}</span>
-                    </button>
-                ))}
-            </nav>
         </div>
     );
 };
