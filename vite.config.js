@@ -33,7 +33,14 @@ export default defineConfig({
           ui: ['react-icons', 'react-toastify']
         }
       }
-    }
+    },
+    assetsInlineLimit: 4096,
+    sourcemap: true
   },
-  base: '/'
+  base: './',
+  experimental: {
+    renderBuiltUrl(filename) {
+      return `/${filename}`
+    }
+  }
 })

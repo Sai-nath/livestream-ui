@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useSocket } from '../../contexts/SocketContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'react-toastify';
+import './Investigation.css';
 
 const Investigation = () => {
     const { investigationId } = useParams();
@@ -12,8 +13,10 @@ const Investigation = () => {
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [streamQuality, setStreamQuality] = useState('good');
+    const [supervisorStream, setSupervisorStream] = useState(null);
     
-    const videoRef = useRef(null);
+    const localVideoRef = useRef(null);
+    const remoteVideoRef = useRef(null);
     const mediaStreamRef = useRef(null);
     const peerConnectionRef = useRef(null);
     const socket = useSocket();
@@ -22,19 +25,144 @@ const Investigation = () => {
     useEffect(() => {
         fetchInvestigationDetails();
         initializeGeolocation();
-        
-        // Socket event listeners
-        socket.on('message', handleNewMessage);
-        socket.on('requestFrontCamera', handleFrontCameraRequest);
-        socket.on('streamQualityUpdate', handleStreamQualityUpdate);
+        setupSocketListeners();
         
         return () => {
             stopStream();
-            socket.off('message', handleNewMessage);
-            socket.off('requestFrontCamera', handleFrontCameraRequest);
-            socket.off('streamQualityUpdate', handleStreamQualityUpdate);
+            cleanupSocketListeners();
         };
     }, [investigationId]);
+
+    const setupSocketListeners = () => {
+        socket.on('message', handleNewMessage);
+        socket.on('requestFrontCamera', handleFrontCameraRequest);
+        socket.on('streamQualityUpdate', handleStreamQualityUpdate);
+        socket.on('supervisorStream', handleSupervisorStream);
+        socket.on('iceCandidate', handleIceCandidate);
+        socket.on('streamAnswer', handleStreamAnswer);
+    };
+
+    const cleanupSocketListeners = () => {
+        socket.off('message', handleNewMessage);
+        socket.off('requestFrontCamera', handleFrontCameraRequest);
+        socket.off('streamQualityUpdate', handleStreamQualityUpdate);
+        socket.off('supervisorStream', handleSupervisorStream);
+        socket.off('iceCandidate', handleIceCandidate);
+        socket.off('streamAnswer', handleStreamAnswer);
+    };
+
+    const handleSupervisorStream = async (stream) => {
+        try {
+            if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = stream;
+                setSupervisorStream(stream);
+            }
+        } catch (error) {
+            console.error('Error handling supervisor stream:', error);
+            toast.error('Error displaying supervisor video');
+        }
+    };
+
+    const handleIceCandidate = async (data) => {
+        try {
+            if (peerConnectionRef.current) {
+                await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        } catch (error) {
+            console.error('Error adding ICE candidate:', error);
+        }
+    };
+
+    const handleStreamAnswer = async (data) => {
+        try {
+            if (peerConnectionRef.current) {
+                await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+        } catch (error) {
+            console.error('Error setting remote description:', error);
+            toast.error('Error establishing video connection');
+        }
+    };
+
+    const startStream = async () => {
+        try {
+            const constraints = {
+                video: {
+                    facingMode: isFrontCamera ? 'user' : 'environment',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: true
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            mediaStreamRef.current = stream;
+            
+            // Create and configure peer connection
+            const peerConnection = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    {
+                        urls: 'turn:numb.viagenie.ca',
+                        username: 'webrtc@live.com',
+                        credential: 'muazkh'
+                    }
+                ]
+            });
+
+            // Add local stream tracks to peer connection
+            stream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, stream);
+            });
+
+            // Set up local video (back camera stream)
+            if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+                localVideoRef.current.style.order = "1"; // Place back camera at the top
+            }
+
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('iceCandidate', {
+                        investigationId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // Create and send offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            socket.emit('streamOffer', {
+                investigationId,
+                offer: peerConnection.localDescription
+            });
+
+            peerConnectionRef.current = peerConnection;
+            setIsStreaming(true);
+
+        } catch (error) {
+            console.error('Error starting stream:', error);
+            toast.error('Error accessing camera');
+        }
+    };
+
+    const stopStream = () => {
+        if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+        }
+        if (supervisorStream) {
+            supervisorStream.getTracks().forEach(track => track.stop());
+        }
+        setIsStreaming(false);
+        setSupervisorStream(null);
+    };
 
     const fetchInvestigationDetails = async () => {
         try {
@@ -70,109 +198,6 @@ const Investigation = () => {
         }
     };
 
-    const startStream = async () => {
-        try {
-            const constraints = {
-                video: {
-                    facingMode: isFrontCamera ? 'user' : 'environment',
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: true
-            };
-
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            mediaStreamRef.current = stream;
-            
-            // Create and configure peer connection
-            const peerConnection = new RTCPeerConnection({
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            });
-
-            // Add local stream tracks to peer connection
-            stream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, stream);
-            });
-
-            // Set up local video
-            videoRef.current.srcObject = stream;
-            videoRef.current.style.order = "1"; // Place local video at the top
-            setIsStreaming(true);
-
-            // Create and send offer
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-
-            // Send the offer to the supervisor through socket
-            socket.emit('streamOffer', {
-                investigationId,
-                offer: peerConnection.localDescription
-            });
-
-            // Handle ICE candidates
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('iceCandidate', {
-                        investigationId,
-                        candidate: event.candidate
-                    });
-                }
-            };
-
-            // Store peer connection reference
-            peerConnectionRef.current = peerConnection;
-
-        } catch (error) {
-            console.error('Error starting stream:', error);
-            toast.error('Error starting camera stream');
-        }
-    };
-
-    useEffect(() => {
-        socket.on('streamAnswer', async ({ answer }) => {
-            try {
-                if (peerConnectionRef.current) {
-                    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-                }
-            } catch (error) {
-                console.error('Error setting remote description:', error);
-            }
-        });
-
-        socket.on('iceCandidate', async ({ candidate }) => {
-            try {
-                if (peerConnectionRef.current) {
-                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-                }
-            } catch (error) {
-                console.error('Error adding ICE candidate:', error);
-            }
-        });
-
-        return () => {
-            socket.off('streamAnswer');
-            socket.off('iceCandidate');
-        };
-    }, [socket]);
-
-    const stopStream = () => {
-        if (mediaStreamRef.current) {
-            mediaStreamRef.current.getTracks().forEach(track => track.stop());
-            mediaStreamRef.current = null;
-            videoRef.current.srcObject = null;
-            setIsStreaming(false);
-        }
-    };
-
-    const toggleCamera = async () => {
-        stopStream();
-        setIsFrontCamera(!isFrontCamera);
-        await startStream();
-    };
-
     const handleNewMessage = (message) => {
         setMessages(prev => [...prev, message]);
     };
@@ -180,7 +205,7 @@ const Investigation = () => {
     const handleFrontCameraRequest = () => {
         toast.info('Supervisor requested front camera');
         if (!isFrontCamera) {
-            toggleCamera();
+            setIsFrontCamera(true);
         }
     };
 
@@ -204,17 +229,55 @@ const Investigation = () => {
     };
 
     return (
-        <div className="p-6">
+        <div className="investigation-container">
+            <div className="video-grid">
+                {/* Back camera stream (top) */}
+                <div className="video-container main-stream">
+                    <video
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="local-video"
+                    />
+                </div>
+                
+                {/* Supervisor's face (bottom) */}
+                <div className="video-container supervisor-stream">
+                    <video
+                        ref={remoteVideoRef}
+                        autoPlay
+                        playsInline
+                        className="remote-video"
+                    />
+                </div>
+            </div>
+
+            <div className="controls">
+                <button 
+                    onClick={isStreaming ? stopStream : startStream}
+                    className={`stream-button ${isStreaming ? 'stop' : 'start'}`}
+                >
+                    {isStreaming ? 'Stop Stream' : 'Start Stream'}
+                </button>
+                <button
+                    onClick={() => setIsFrontCamera(!isFrontCamera)}
+                    className="camera-switch-button"
+                    disabled={!isStreaming}
+                >
+                    Switch Camera
+                </button>
+            </div>
+
             <div className="grid grid-cols-3 gap-6">
                 {/* Main Stream View */}
                 <div className="col-span-2 bg-white p-4 rounded-lg shadow-md">
                     <div className="aspect-w-16 aspect-h-9 mb-4">
                         <video
-                            ref={videoRef}
-                            className="w-full h-full rounded-lg"
                             autoPlay
                             playsInline
                             muted
+                            className="w-full h-full rounded-lg"
                         />
                     </div>
                     
@@ -243,29 +306,12 @@ const Investigation = () => {
                         </div>
                         
                         <div className="flex space-x-4">
-                            {!isStreaming ? (
-                                <button
-                                    onClick={startStream}
-                                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                                >
-                                    Start Stream
-                                </button>
-                            ) : (
-                                <>
-                                    <button
-                                        onClick={toggleCamera}
-                                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                                    >
-                                        Switch Camera
-                                    </button>
-                                    <button
-                                        onClick={stopStream}
-                                        className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                                    >
-                                        Stop Stream
-                                    </button>
-                                </>
-                            )}
+                            <button
+                                onClick={toggleCamera}
+                                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                            >
+                                Switch Camera
+                            </button>
                         </div>
                     </div>
                 </div>
