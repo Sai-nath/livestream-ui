@@ -41,7 +41,10 @@ jobs:
           echo "NODE_ENV=production" >> .env
 
       - name: Build
-        run: npm run build
+        run: |
+          npm run build
+          # Rename dist to build for Azure Static Web Apps
+          mv dist build
 
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
@@ -63,7 +66,7 @@ jobs:
           action: "upload"
           app_location: "/" # App source code path
           api_location: "" # Api source code path - optional
-          output_location: "dist" # Vite builds to dist folder by default
+          output_location: "build" # Now using build directory
           skip_api_build: true
           github_id_token: ${{ steps.idtoken.outputs.result }}
 
