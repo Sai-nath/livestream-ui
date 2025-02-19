@@ -19,28 +19,8 @@ export default defineConfig({
           : 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
-        ws: true
-      }
-    }
-  },
-  build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          ui: ['react-icons', 'react-toastify']
-        }
-      }
+        ws: true,
+      },
     },
-    assetsInlineLimit: 4096,
-    sourcemap: true
   },
-  base: './',
-  experimental: {
-    renderBuiltUrl(filename) {
-      return `/${filename}`
-    }
-  }
 })
