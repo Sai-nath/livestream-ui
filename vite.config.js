@@ -19,8 +19,21 @@ export default defineConfig({
           : 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
-        ws: true,
-      },
-    },
+        ws: true
+      }
+    }
   },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['react-icons', 'react-toastify']
+        }
+      }
+    }
+  },
+  base: '/'
 })
