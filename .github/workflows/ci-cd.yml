@@ -1,56 +1,79 @@
-name: Frontend CI/CD
+name: Azure Static Web Apps CI/CD
 
 on:
   push:
-    branches: [ main, develop ]
+    branches:
+      - master
   pull_request:
-    branches: [ main, develop ]
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - master
 
 jobs:
-  build-and-deploy:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
-    
+    name: Build and Deploy Job
+    permissions:
+       id-token: write
+       contents: read
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+          lfs: false
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v2
-      with:
-        node-version: '14.x'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
 
-    - name: Install dependencies
-      run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Set environment variables
-      run: |
-        if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+      - name: Set environment variables
+        run: |
           echo "Setting production environment"
           cp .env.production .env
-          echo "REACT_APP_API_URL=https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net" >> .env
-        else
-          echo "Setting development environment"
-          cp .env.development .env
-          echo "REACT_APP_API_URL=http://localhost:5000" >> .env
-        fi
+          echo "VITE_API_URL=https://livestreamingclaims.azurewebsites.net" >> .env
+          echo "VITE_SOCKET_URL=https://livestreamingclaims.azurewebsites.net" >> .env
+          echo "NODE_ENV=production" >> .env
 
-    - name: Build
-      run: npm run build
+      - name: Build
+        run: npm run build
 
-    - name: Deploy to Azure Static Web Apps
-      if: github.ref == 'refs/heads/main'
-      uses: Azure/static-web-apps-deploy@v1
-      with:
-        azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        action: "upload"
-        app_location: "/" 
-        output_location: "build"
-        skip_app_build: true
+      - name: Install OIDC Client from Core Package
+        run: npm install @actions/core@1.6.0 @actions/http-client
 
-    - name: Start application
-      run: |
-        if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-          npm run prod
-        else
-          npm run dev
-        fi
+      - name: Get Id Token
+        uses: actions/github-script@v6
+        id: idtoken
+        with:
+           script: |
+               const coredemo = require('@actions/core')
+               return await coredemo.getIDToken()
+           result-encoding: string
+
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_SEA_057F1C900 }}
+          action: "upload"
+          app_location: "/" # App source code path
+          api_location: "" # Api source code path - optional
+          output_location: "dist" # Vite builds to dist folder
+          github_id_token: ${{ steps.idtoken.outputs.result }}
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_SEA_057F1C900 }}
+          action: "close"
