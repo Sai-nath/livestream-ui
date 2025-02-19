@@ -85,9 +85,51 @@ const Investigation = () => {
             videoRef.current.srcObject = stream;
             setIsStreaming(true);
 
-            // Initialize WebRTC connection here
-            // Send stream to supervisor
+            // Initialize WebRTC connection
+            const peerConnection = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ]
+            });
+
+            // Add tracks to the peer connection
+            stream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, stream);
+            });
+
+            // Create and send offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            
+            socket.emit('stream:offer', {
+                streamId: investigationId,
+                offer: peerConnection.localDescription
+            });
+
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('stream:ice', {
+                        streamId: investigationId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // Handle answer from supervisor
+            socket.on('stream:answer', async (data) => {
+                if (data.streamId === investigationId) {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    } catch (error) {
+                        console.error('Error setting remote description:', error);
+                        toast.error('Error establishing connection');
+                    }
+                }
+            });
+
         } catch (error) {
+            console.error('Error starting camera stream:', error);
             toast.error('Error starting camera stream');
         }
     };

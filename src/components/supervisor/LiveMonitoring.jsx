@@ -103,8 +103,36 @@ const LiveMonitoring = () => {
 
     const handleStreamData = (data) => {
         if (selectedStream?.id === data.streamId && videoRef.current) {
-            // Handle incoming stream data (e.g., WebRTC or video chunks)
-            console.log('Received stream data:', data);
+            if (data.type === 'offer') {
+                // Create and configure RTCPeerConnection
+                const peerConnection = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                });
+
+                // Set up event handlers
+                peerConnection.ontrack = (event) => {
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = event.streams[0];
+                    }
+                };
+
+                // Handle the offer
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
+                    .then(() => peerConnection.createAnswer())
+                    .then(answer => peerConnection.setLocalDescription(answer))
+                    .then(() => {
+                        socket.emit('stream:answer', {
+                            streamId: data.streamId,
+                            answer: peerConnection.localDescription
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error handling stream offer:', error);
+                        toast.error('Error connecting to stream');
+                    });
+            }
         }
     };
 
