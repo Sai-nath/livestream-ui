@@ -36,8 +36,8 @@ jobs:
         run: |
           echo "Setting production environment"
           cp .env.production .env
-          echo "VITE_API_URL=https://livestreamingclaims.azurewebsites.net" >> .env
-          echo "VITE_SOCKET_URL=https://livestreamingclaims.azurewebsites.net" >> .env
+          echo "VITE_API_URL=https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net" >> .env
+          echo "VITE_SOCKET_URL=wss://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net" >> .env
           echo "NODE_ENV=production" >> .env
 
       - name: Build
@@ -63,7 +63,8 @@ jobs:
           action: "upload"
           app_location: "/" # App source code path
           api_location: "" # Api source code path - optional
-          output_location: "dist" # Vite builds to dist folder
+          output_location: "dist" # Vite builds to dist folder by default
+          skip_api_build: true
           github_id_token: ${{ steps.idtoken.outputs.result }}
 
   close_pull_request_job:
