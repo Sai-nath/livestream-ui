@@ -1,0 +1,242 @@
+.investigator-dashboard {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #1a1c23;
+}
+
+/* Mobile Header */
+.mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    background-color: #2d3748;
+    color: white;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    height: 60px;
+}
+
+.mobile-header h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.menu-button, .user-info {
+    background: none;
+    border: none;
+    color: #a0aec0;
+    font-size: 1.25rem;
+    padding: 0.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-button:hover, .user-info:hover {
+    color: #fff;
+}
+
+/* Mobile Navigation */
+.mobile-nav {
+    position: fixed;
+    top: 0;
+    left: -280px;
+    width: 280px;
+    height: 100vh;
+    background-color: #2d3748;
+    z-index: 50;
+    transition: transform 0.3s ease-in-out;
+    display: flex;
+    flex-direction: column;
+}
+
+.mobile-nav.open {
+    transform: translateX(280px);
+}
+
+.nav-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #4a5568;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.profile-icon {
+    font-size: 2rem;
+    color: #a0aec0;
+}
+
+.user-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-name {
+    color: #fff;
+    font-weight: 600;
+}
+
+.user-role {
+    color: #a0aec0;
+    font-size: 0.875rem;
+}
+
+.nav-links {
+    flex: 1;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    color: #a0aec0;
+    background: none;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    text-align: left;
+}
+
+.nav-item:hover {
+    background-color: #4a5568;
+    color: #fff;
+}
+
+.nav-item.active {
+    background-color: #4299e1;
+    color: #fff;
+}
+
+.nav-item .icon {
+    font-size: 1.25rem;
+}
+
+.nav-item .badge {
+    margin-left: auto;
+    background-color: #e53e3e;
+    color: #fff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+}
+
+.logout-button {
+    margin: 1rem;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: #e53e3e;
+    background: none;
+    border: 1px solid #e53e3e;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.logout-button:hover {
+    background-color: #e53e3e;
+    color: #fff;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    margin-top: 60px;
+    margin-bottom: 60px;
+    overflow-y: auto;
+    transition: filter 0.3s;
+}
+
+.main-content.blur {
+    filter: blur(4px);
+    pointer-events: none;
+}
+
+/* Bottom Navigation */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background-color: #2d3748;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 40;
+    border-top: 1px solid #4a5568;
+}
+
+.bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    color: #a0aec0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.bottom-nav-item:hover {
+    color: #fff;
+}
+
+.bottom-nav-item.active {
+    color: #4299e1;
+}
+
+.bottom-nav-item .icon {
+    font-size: 1.25rem;
+}
+
+.bottom-nav-item .label {
+    font-size: 0.75rem;
+}
+
+/* Responsive Design */
+@media (min-width: 768px) {
+    .mobile-header {
+        padding: 1rem 2rem;
+    }
+
+    .main-content {
+        padding: 2rem;
+    }
+}
+
+/* Dark Theme Colors */
+:root {
+    --primary-color: #4299e1;
+    --primary-hover: #3182ce;
+    --danger-color: #e53e3e;
+    --danger-hover: #c53030;
+    --text-primary: #fff;
+    --text-secondary: #a0aec0;
+    --bg-primary: #1a1c23;
+    --bg-secondary: #2d3748;
+    --bg-tertiary: #4a5568;
+}

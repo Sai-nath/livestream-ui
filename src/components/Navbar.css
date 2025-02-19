@@ -1,0 +1,123 @@
+.navbar {
+    background-color: #1a202c;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+}
+
+.navbar-brand {
+    display: flex;
+    align-items: center;
+}
+
+.brand-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: #e2e8f0;
+}
+
+.brand-icon {
+    font-size: 1.5rem;
+}
+
+.brand-text {
+    font-size: 1.5rem;
+    font-weight: 600;
+    background: linear-gradient(45deg, #63b3ed, #ed64a6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.navbar-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 1;
+    margin-left: 2rem;
+}
+
+.nav-section {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+.section-title {
+    color: #63b3ed;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.nav-links {
+    display: flex;
+    gap: 1rem;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    color: #a0aec0;
+    text-decoration: none;
+    border-radius: 0.375rem;
+    transition: all 0.2s;
+}
+
+.nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+}
+
+.nav-link.active {
+    background-color: rgba(66, 153, 225, 0.2);
+    color: #63b3ed;
+}
+
+.nav-link svg {
+    font-size: 1.25rem;
+}
+
+.user-section {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.welcome-text {
+    color: #e2e8f0;
+    font-size: 0.875rem;
+}
+
+.logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    color: #a0aec0;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.logout-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #e2e8f0;
+}
+
+.logout-btn svg {
+    font-size: 1.1rem;
+}

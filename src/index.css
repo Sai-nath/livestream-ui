@@ -1,0 +1,275 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 26 26 26;        /* #1a1a1a */
+    --background-darker: 20 20 20;  /* #141414 */
+    --background-card: 34 34 34;    /* #222222 */
+    --text-primary: 248 250 252;    /* #f8fafc */
+    --text-secondary: 226 232 240;  /* #e2e8f0 */
+    --accent-blue: 37 99 235;       /* #2563eb */
+    --accent-pink: 236 72 153;      /* #ec4899 */
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: dark;
+  }
+  
+  html {
+    @apply h-full antialiased scroll-smooth;
+    height: 100vh;
+  }
+  
+  body {
+    @apply bg-background text-text-primary antialiased;
+    height: 100vh;
+    margin: 0;
+    overflow-x: hidden;
+  }
+  
+  #root {
+    height: 100vh;
+  }
+  
+  h1 {
+    @apply text-4xl md:text-6xl font-bold leading-tight;
+  }
+  
+  h2 {
+    @apply text-3xl md:text-5xl font-bold leading-tight;
+  }
+  
+  h3 {
+    @apply text-2xl md:text-4xl font-bold leading-tight;
+  }
+  
+  p {
+    @apply text-lg leading-relaxed text-text-secondary;
+  }
+}
+
+@layer components {
+  .fullscreen-section {
+    @apply h-screen w-full relative
+           flex items-center justify-center
+           bg-gradient-dark snap-start snap-always;
+  }
+  
+  .section-container {
+    @apply container mx-auto px-4 py-8;
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+  
+  .btn-primary {
+    @apply inline-flex items-center px-6 py-3 rounded-lg
+           bg-accent-pink text-white font-semibold
+           hover:bg-accent-pink/90 transition-colors
+           duration-200;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center px-6 py-3 rounded-lg
+           bg-background-darker text-white font-semibold
+           hover:bg-background-darker/90 transition-colors
+           duration-200 border border-accent-blue/20;
+  }
+
+  .nav-link {
+    @apply text-text-secondary hover:text-text-primary transition-all duration-300
+           relative after:absolute after:bottom-0 after:left-0 after:w-0 
+           after:h-0.5 after:bg-accent-pink hover:after:w-full after:transition-all;
+  }
+
+  .section {
+    @apply py-24 px-4;
+  }
+
+  .section-alt {
+    @apply bg-background-darker;
+  }
+
+  .container {
+    @apply max-w-7xl mx-auto;
+  }
+
+  .section-content {
+    @apply flex flex-col items-center justify-center min-h-[calc(100vh-4rem)];
+  }
+
+  .section-title {
+    @apply text-4xl font-bold mb-4;
+  }
+
+  .section-subtitle {
+    @apply text-xl text-text-secondary max-w-3xl mx-auto mb-16;
+  }
+
+  .section-grid {
+    @apply grid gap-8 w-full;
+  }
+
+  .section-grid-2 {
+    @apply grid grid-cols-1 md:grid-cols-2 gap-8;
+  }
+
+  .section-grid-3 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8;
+  }
+
+  .section-grid-4 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8;
+  }
+
+  .card {
+    @apply bg-background-card rounded-2xl p-8 shadow-xl
+           hover:shadow-2xl transition-all duration-300
+           hover:scale-[1.02] border border-background-darker/20;
+  }
+
+  .feature-card,
+  .security-card,
+  .role-card,
+  .process-card {
+    @apply bg-background-card rounded-xl p-8 shadow-xl
+           hover:shadow-2xl transition-all duration-300
+           hover:scale-[1.02] border border-background-darker/20;
+  }
+
+  .certification-badge {
+    @apply px-4 py-2 bg-background-darker rounded-lg
+           text-text-primary font-semibold
+           border border-accent-pink/20;
+  }
+
+  .feature-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6;
+  }
+
+  .feature-card {
+    @apply card hover:scale-105 transition-transform duration-300;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary-blue to-accent-pink
+           bg-clip-text text-transparent font-bold;
+  }
+
+  .glass-panel {
+    @apply bg-background-card/40 backdrop-blur-md
+           border border-background-darker rounded-xl
+           shadow-custom;
+  }
+
+  .highlight-text {
+    @apply text-accent-pink font-semibold;
+  }
+
+  /* Step cards specific styles */
+  .step-card {
+    @apply bg-background-card border border-background-darker
+           rounded-xl p-4 md:p-6 relative z-10
+           hover:border-primary-blue transition-all duration-300;
+  }
+
+  .step-number {
+    @apply w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary-blue
+           text-text-primary flex items-center justify-center
+           font-bold text-base md:text-lg mb-3 md:mb-4 shadow-glow-blue;
+  }
+
+  .step-icon {
+    @apply text-primary-blue mb-3 md:mb-4 transform transition-transform
+           duration-300 hover:scale-110;
+  }
+
+  .step-title {
+    @apply text-lg md:text-xl font-semibold text-text-primary mb-2
+           tracking-tight;
+  }
+
+  .step-description {
+    @apply text-text-secondary text-sm md:text-base leading-relaxed;
+  }
+
+  .enterprise-logo {
+    @apply flex items-center justify-center p-6 bg-background-card rounded-xl
+           border border-background-darker/20 shadow-lg
+           hover:shadow-xl hover:border-accent-pink/20 transition-all duration-300;
+  }
+
+  .stat-card {
+    @apply bg-background-card rounded-xl p-8 text-center
+           border border-background-darker/20 shadow-lg
+           hover:shadow-xl hover:border-accent-pink/20 transition-all duration-300;
+  }
+
+  .process-card {
+    @apply bg-background-card rounded-xl p-8 shadow-xl
+           hover:shadow-2xl transition-all duration-300
+           hover:scale-[1.02] border border-background-darker/20
+           relative;
+  }
+
+  .security-card {
+    @apply bg-background-card rounded-xl p-8 shadow-xl
+           hover:shadow-2xl transition-all duration-300
+           hover:scale-[1.02] border border-background-darker/20;
+  }
+
+  .role-card {
+    @apply bg-background-card rounded-xl p-8 shadow-xl
+           hover:shadow-2xl transition-all duration-300
+           hover:scale-[1.02] border border-background-darker/20;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-accent-blue to-accent-pink bg-clip-text text-transparent;
+  }
+
+  .snap-section {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  .shadow-glow {
+    @apply shadow-xl shadow-accent-pink/25;
+  }
+
+  .shadow-glow-blue {
+    @apply shadow-xl shadow-accent-blue/25;
+  }
+
+  .bg-gradient {
+    @apply bg-gradient-to-br from-background to-background-darker;
+  }
+}
+
+/* Custom styles */
+.Toastify__toast-container {
+  z-index: 9999;
+}
+
+.Toastify__toast {
+  border-radius: 0.375rem;
+}
+
+.Toastify__toast--success {
+  background: #059669;
+}
+
+.Toastify__toast--error {
+  background: #dc2626;
+}
+
+.Toastify__toast--warning {
+  background: #d97706;
+}
+
+.Toastify__toast--info {
+  background: #3b82f6;
+}

@@ -1,0 +1,165 @@
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: #1a1f2e;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    color: #fff;
+}
+
+.modal-header {
+    padding: 1rem;
+    border-bottom: 1px solid #2d3446;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #fff;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #6c7293;
+    cursor: pointer;
+    padding: 0.5rem;
+    transition: color 0.2s;
+}
+
+.close-button:hover {
+    color: #fff;
+}
+
+.investigators-list {
+    padding: 1rem;
+}
+
+.investigator-item {
+    background-color: #2d3446;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.2s;
+}
+
+.investigator-item:hover {
+    background-color: #353d54;
+}
+
+.investigator-info {
+    flex: 1;
+}
+
+.name-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.investigator-name {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #fff;
+}
+
+.status-indicator {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.status-indicator.online {
+    background-color: #2ecc71;
+    color: #fff;
+}
+
+.status-indicator.offline {
+    background-color: #95a5a6;
+    color: #fff;
+}
+
+.investigator-email {
+    color: #6c7293;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+}
+
+.last-active {
+    color: #95a5a6;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+.assign-button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 0.5rem 1.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.assign-button:hover {
+    background-color: #2980b9;
+}
+
+.loading .spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    margin: 2rem auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.modal-content.loading,
+.modal-content.error {
+    padding: 2rem;
+    text-align: center;
+}
+
+.error-message {
+    color: #e74c3c;
+    margin-bottom: 1rem;
+}
+
+.no-investigators {
+    text-align: center;
+    color: #6c7293;
+    padding: 2rem;
+    font-style: italic;
+}

@@ -1,0 +1,150 @@
+.incoming-call-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.call-content {
+    background-color: #1a1a2e;
+    border-radius: 1rem;
+    padding: 2rem;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    animation: slideIn 0.3s ease-out;
+}
+
+.call-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.call-header h2 {
+    color: #ffffff;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.call-info {
+    margin-bottom: 2rem;
+}
+
+.investigator-name {
+    color: #ffffff;
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.claim-number {
+    color: #94a3b8;
+    font-size: 1rem;
+}
+
+.call-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.call-actions button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.accept-btn {
+    background-color: #22c55e;
+    color: white;
+    border: none;
+}
+
+.accept-btn:hover {
+    background-color: #16a34a;
+}
+
+.reject-btn {
+    background-color: #ef4444;
+    color: white;
+    border: none;
+}
+
+.reject-btn:hover {
+    background-color: #dc2626;
+}
+
+.video-call-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #000;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Ringing animation */
+.call-content {
+    animation: ring 2s infinite;
+}
+
+@keyframes ring {
+    0%, 100% {
+        transform: scale(1);
+    }
+    5%, 15% {
+        transform: scale(1.05);
+    }
+    10%, 20% {
+        transform: scale(0.95);
+    }
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    .call-content {
+        margin: 20px;
+        padding: 15px;
+    }
+
+    .call-actions button {
+        padding: 8px 16px;
+        font-size: 0.9em;
+    }
+}
