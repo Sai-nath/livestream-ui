@@ -1,6 +1,14 @@
 // API Configuration
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const getBaseUrl = () => {
+    const networkUrl = import.meta.env.VITE_API_URL;
+    const allowLocal = import.meta.env.VITE_ALLOW_LOCAL === 'true';
+    const isLocalhost = window.location.hostname === 'localhost';
+    
+    return isLocalhost && allowLocal ? 'http://localhost:5000' : networkUrl;
+};
+
+export const API_URL = getBaseUrl();
+export const SOCKET_URL = getBaseUrl();
 
 // Authentication Configuration
 export const TOKEN_KEY = 'user_token';

@@ -42,13 +42,28 @@ export const SocketProvider = ({ children }) => {
       role: user.role
     });
 
-    const socketInstance = io(import.meta.env.VITE_API_URL || 'http://localhost:5000', {
-      auth: { token: user.token },  // Use token from user object
+    // Get the base URL based on the current environment
+    const getBaseUrl = () => {
+      const networkUrl = import.meta.env.VITE_API_URL;
+      const allowLocal = import.meta.env.VITE_ALLOW_LOCAL === 'true';
+      const isLocalhost = window.location.hostname === 'localhost';
+      const baseUrl = isLocalhost && allowLocal ? 'http://localhost:5000' : networkUrl;
+      logWithTimestamp('Using socket base URL:', baseUrl);
+      return baseUrl;
+    };
+
+    const socketInstance = io(getBaseUrl(), {
+      auth: { token: user.token },
       reconnection: true,
       reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 10000
+      timeout: 10000,
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      path: '/socket.io',
+      autoConnect: true,
+      forceNew: true
     });
 
     // Connection events
@@ -81,11 +96,9 @@ export const SocketProvider = ({ children }) => {
     });
 
     socketInstance.on('connect_error', (error) => {
-      logWithTimestamp(`Socket connection error`, { 
-        error: error.message,
-        userId: user.id
-      });
+      logWithTimestamp('Socket connection error', { error: error.message, userId: user.id });
       setIsConnected(false);
+      setReconnectAttempts((prev) => prev + 1);
     });
 
     socketInstance.on('error', (error) => {

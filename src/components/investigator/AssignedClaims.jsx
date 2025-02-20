@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FaCar, FaMapMarkerAlt, FaCalendarAlt, FaFileAlt, FaPlay, FaEye, FaSpinner, FaExclamationCircle } from 'react-icons/fa';
+import { FaEye, FaPlay, FaSpinner, FaExclamationCircle, FaCalendarAlt, FaUser, FaCircle } from 'react-icons/fa';
 import { useSocket } from '../../contexts/SocketContext';
 import VideoCall from '../common/VideoCall';
 import './AssignedClaims.css';
@@ -16,7 +16,7 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
     const navigate = useNavigate();
     const [activeCall, setActiveCall] = useState(null);
     const [showVideoCall, setShowVideoCall] = useState(false);
-    const [currentClaimId, setCurrentClaimId] = useState(null);
+    const [currentClaimData, setCurrentClaimData] = useState(null);
 
     useEffect(() => {
         fetchAssignedClaims();
@@ -34,7 +34,7 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
                 console.log('Call ended event received');
                 setShowVideoCall(false);
                 setActiveCall(null);
-                setCurrentClaimId(null);
+                setCurrentClaimData(null);
             });
 
             return () => {
@@ -53,8 +53,7 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
             return;
         }
 
-        // Check for all possible claim ID fields
-        const claimId = claim?.ClaimId || claim?.claimId || claim?.id;
+        const claimId = claim?.claimId;
         console.log('Resolved claimId:', claimId);
 
         if (!claim || !claimId) {
@@ -63,7 +62,7 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
             return;
         }
 
-        setCurrentClaimId(claimId);
+        setCurrentClaimData(claim);
 
         // Request call with supervisor
         socket.emit('investigation_call_request', { 
@@ -81,38 +80,33 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
             console.error('Call error:', data);
             toast.error(data.message);
             setActiveCall(null);
-            setCurrentClaimId(null);
+            setCurrentClaimData(null);
         });
 
         socket.once('investigation_call_rejected', (data) => {
             console.log('Call rejected:', data);
             toast.error(data.reason || 'Call rejected by supervisor');
             setActiveCall(null);
-            setCurrentClaimId(null);
+            setCurrentClaimData(null);
         });
     };
 
     const handleEndCall = () => {
-        console.log('Ending call, activeCall:', activeCall, 'currentClaimId:', currentClaimId);
+        console.log('Ending call, activeCall:', activeCall, 'currentClaimData:', currentClaimData);
         if (socket && activeCall) {
             socket.emit('end_call', { callId: activeCall });
             
-            if (currentClaimId) {
+            if (currentClaimData?.claimId) {
                 socket.emit('update_claim_status', {
-                    claimId: parseInt(currentClaimId, 10),
+                    claimId: parseInt(currentClaimData.claimId, 10),
                     status: 'Assigned'
                 });
             }
         }
         setShowVideoCall(false);
         setActiveCall(null);
-        setCurrentClaimId(null);
+        setCurrentClaimData(null);
     };
-
-    // Debug logging for state changes
-    useEffect(() => {
-        console.log('State changed - showVideoCall:', showVideoCall, 'activeCall:', activeCall);
-    }, [showVideoCall, activeCall]);
 
     const fetchAssignedClaims = async () => {
         try {
@@ -142,8 +136,9 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
         }
     };
 
-    if (showVideoCall && activeCall) {
+    if (showVideoCall && activeCall && currentClaimData) {
         console.log('Rendering video call interface');
+        const claimNumber = currentClaimData.claimId ? `CLM-${currentClaimData.claimId}` : `CLAIM-${currentClaimData.claimId}`;
         return (
             <div className="video-call-fullscreen">
                 <VideoCall
@@ -151,6 +146,7 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
                     callId={activeCall}
                     socket={socket}
                     onEndCall={handleEndCall}
+                    claimNumber={claimNumber}
                 />
             </div>
         );
@@ -181,138 +177,116 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
     const inProgressClaims = claims.filter(claim => claim.status === 'In Progress');
 
     return (
-        <div className="assigned-claims-container">
-            <div className="header">
-                <h2>Assigned Claims</h2>
-                <div className="stats">
-                    <div className="stat-item">
-                        <span className="stat-label">Total Claims</span>
-                        <span className="stat-value">{claims.length}</span>
-                    </div>
-                    <div className="stat-item">
-                        <span className="stat-label">Pending</span>
-                        <span className="stat-value">{pendingClaims.length}</span>
-                    </div>
-                    <div className="stat-item">
-                        <span className="stat-label">In Progress</span>
-                        <span className="stat-value">{inProgressClaims.length}</span>
-                    </div>
+        <div className="inube-claims-container">
+            <div className="claims-header">
+                <h1>iNube Claims</h1>
+                <div className="user-profile">
+                    <FaUser />
+                </div>
+            </div>
+
+            <div className="claims-stats">
+                <div className="stat-card">
+                    <div className="stat-label">Total Claims</div>
+                    <div className="stat-value">{claims.length}</div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-label">Pending</div>
+                    <div className="stat-value">{pendingClaims.length}</div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-label">In Progress</div>
+                    <div className="stat-value">{inProgressClaims.length}</div>
                 </div>
             </div>
 
             <div className="claims-grid">
                 {claims.length === 0 ? (
                     <div className="no-claims">
-                        <FaFileAlt className="icon" />
                         <p>No claims assigned yet</p>
                     </div>
                 ) : (
                     claims.map((claim) => {
-                        const supervisorOnline = isUserOnline(claim.supervisor?.id);
-                        const claimId = claim?.ClaimId || claim?.claimId || claim?.id;
+                        const supervisorOnline = claim.supervisor ? 
+                            isUserOnline(claim.supervisor.id) || claim.supervisor.isOnline : 
+                            false;
+                        
+                        // Format the date to match UI
+                        const formattedDate = claim.assignedAt ? 
+                            new Date(claim.assignedAt).toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                            }).replace(/\//g, '/') : 'N/A';
+                        
                         return (
-                            <div key={claimId} className="claim-card">
+                            <div key={claim.claimId} className="claim-card">
                                 <div className="claim-header">
-                                    <div className="claim-id">{claimId}</div>
-                                    <div className={`claim-status status-${claim.status.toLowerCase().replace(' ', '-')}`}>
+                                    <div className="claim-title">
+                                        Claim #{claim.claimId}
+                                    </div>
+                                    <div className="claim-status">
                                         {claim.status}
                                     </div>
                                 </div>
                                 
                                 <div className="claim-details">
-                                    <div className="detail-item">
-                                        <FaCar className="icon" />
-                                        <div className="detail-content">
-                                            <span className="label">Vehicle</span>
-                                            <span className="value">
-                                                {claim.vehicleInfo.make} {claim.vehicleInfo.model} ({claim.vehicleInfo.year})
-                                            </span>
-                                            <span className="sub-value">
-                                                Reg: {claim.vehicleInfo.registrationNumber}
-                                            </span>
-                                        </div>
+                                    <div className="detail-row">
+                                        <FaCalendarAlt className="detail-icon" />
+                                        <div className="detail-label">Assigned Date</div>
+                                        <div className="detail-value">{formattedDate}</div>
                                     </div>
 
-                                    {claim.claimDetails.dateOfIncident && (
-                                        <div className="detail-item">
-                                            <FaCalendarAlt className="icon" />
-                                            <div className="detail-content">
-                                                <span className="label">Incident Date</span>
-                                                <span className="value">
-                                                    {new Date(claim.claimDetails.dateOfIncident).toLocaleDateString()}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {claim.claimDetails.location && (
-                                        <div className="detail-item">
-                                            <FaMapMarkerAlt className="icon" />
-                                            <div className="detail-content">
-                                                <span className="label">Location</span>
-                                                <span className="value">{claim.claimDetails.location}</span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {claim.status === 'Assigned' && (
-                                        <div className="supervisor-status">
-                                            <div className={`status-indicator ${supervisorOnline ? 'online' : 'offline'}`} />
+                                    <div className="detail-row">
+                                        <FaUser className="detail-icon" />
+                                        <div className="detail-label">Supervisor</div>
+                                        <div className="detail-value supervisor-name">
                                             <div className="supervisor-info">
-                                                <span className="label">Supervisor:</span>
-                                                <span className="value">{claim.supervisor?.name}</span>
-                                                <span className="status">
-                                                    {supervisorOnline ? 'Online' : 'Offline'}
-                                                </span>
+                                                <FaCircle className={`status-dot ${supervisorOnline ? 'online' : 'offline'}`} />
+                                                <span>{claim.supervisor?.name || 'Supervisor User'}</span>
+                                            </div>
+                                            <div className="supervisor-status">
+                                                {supervisorOnline ? 'Online' : 'Offline'}
                                             </div>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
 
                                 <div className="claim-actions">
                                     <button
                                         className="action-btn view"
-                                        onClick={() => navigate(`/claims/${claimId}`)}
+                                        onClick={() => navigate(`/claims/${claim.claimId}`)}
                                     >
                                         <FaEye /> View Details
                                     </button>
-                                    
-                                    {claim.status === 'Assigned' && (
-                                        <button
-                                            className={`action-btn start ${!supervisorOnline ? 'disabled' : ''}`}
-                                            onClick={() => supervisorOnline && handleStartInvestigation(claim)}
-                                            disabled={!supervisorOnline || activeCall !== null}
-                                            title={
-                                                !supervisorOnline 
-                                                    ? 'Supervisor must be online to start investigation' 
-                                                    : activeCall !== null 
-                                                        ? 'Call in progress...'
-                                                        : 'Start Investigation'
-                                            }
-                                        >
-                                            <FaPlay /> 
-                                            {activeCall !== null 
-                                                ? 'Calling...' 
-                                                : supervisorOnline 
-                                                    ? 'Start Investigation' 
-                                                    : 'Waiting for Supervisor'
-                                            }
-                                        </button>
-                                    )}
-                                    
-                                    {claim.status === 'In Progress' && claim.investigationId && (
-                                        <button
-                                            className="action-btn continue"
-                                            onClick={() => navigate(`/investigation/${claim.investigationId}`)}
-                                        >
-                                            <FaSpinner /> Continue Investigation
-                                        </button>
-                                    )}
+                                    <button
+    className={`action-btn start ${!supervisorOnline ? 'disabled' : ''}`}
+    onClick={() => supervisorOnline && handleStartInvestigation(claim)}
+    disabled={!supervisorOnline || activeCall !== null}
+>
+    <FaPlay />
+    {supervisorOnline ? 'Start Investigation' : 'Supervisor Offline'}
+</button>
                                 </div>
                             </div>
                         );
                     })
                 )}
+            </div>
+
+            <div className="bottom-navigation">
+                <div className="nav-item active">
+                    <div className="icon-container">
+                        <FaSpinner className="nav-icon" />
+                    </div>
+                    <div className="nav-label">Assigned Claims</div>
+                </div>
+                <div className="nav-item">
+                    <div className="icon-container">
+                        <FaSpinner className="nav-icon" />
+                    </div>
+                    <div className="nav-label">Active Investigation</div>
+                </div>
             </div>
         </div>
     );
