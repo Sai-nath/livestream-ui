@@ -2,13 +2,13 @@ import { BlobServiceClient } from '@azure/storage-blob';
 
 // Azure Storage configuration 
 const storageConfig = {
-  accountName: 'lvsdemo',
-  accountKey: 'XdeuQtdqeM5uCjsl8J7YUeSJOZyawhdjkc4zRVAGg+RNyveFK5lTpeFrFM0FuCxGJkYFA1bODbiC+AStA/HsgQ==',
-  endpoint: 'http://lvsdemo.blob.core.windows.net',
-  screenshotsContainer: 'claims-screenshots',
-  videosContainer: 'claims-recordings'
-};
-
+    accountName: process.env.AZURE_STORAGE_ACCOUNT_NAME,
+    accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY,
+    endpoint: process.env.AZURE_STORAGE_ENDPOINT,
+    screenshotsContainer: process.env.AZURE_SCREENSHOTS_CONTAINER,
+    videosContainer: process.env.AZURE_VIDEOS_CONTAINER
+  };
+  
 // Create the BlobServiceClient with connection string instead of SharedKeyCredential
 const createBlobServiceClient = () => {
   const connectionString = `DefaultEndpointsProtocol=http;AccountName=${storageConfig.accountName};AccountKey=${storageConfig.accountKey};EndpointSuffix=core.windows.net`;
