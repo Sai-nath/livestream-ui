@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
-import { FaClipboardCheck, FaSearch, FaUser, FaBars, FaSignOutAlt } from 'react-icons/fa';
+import { 
+    FaClipboardCheck, 
+    FaSearch, 
+    FaUser, 
+    FaBars, 
+    FaSignOutAlt,
+    FaTimes,
+    FaHome,
+    FaIdCard
+} from 'react-icons/fa';
 import AssignedClaims from './AssignedClaims';
 import Investigation from './Investigation';
 import './InvestigatorDashboard.css';
@@ -48,6 +57,19 @@ const InvestigatorDashboard = () => {
         }
     }, [socket]);
 
+    // Handle body scroll lock when menu is open
+    useEffect(() => {
+        if (menuOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'auto';
+        }
+        
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, [menuOpen]);
+
     const isUserOnline = (userId) => {
         const user = onlineUsers.get(userId);
         return user?.isOnline || false;
@@ -69,11 +91,19 @@ const InvestigatorDashboard = () => {
 
     const handleLogout = async () => {
         try {
-            await logout();
-            navigate('/login');
+            if (window.confirm('Are you sure you want to logout?')) {
+                await logout();
+                toast.success('Logged out successfully');
+                navigate('/login');
+            }
         } catch (error) {
             console.error('Logout failed:', error);
+            toast.error('Logout failed. Please try again.');
         }
+    };
+
+    const closeMenu = () => {
+        setMenuOpen(false);
     };
 
     const isActive = (path) => {
@@ -85,7 +115,7 @@ const InvestigatorDashboard = () => {
             {/* Mobile Header */}
             <header className="mobile-header">
                 <button className="menu-button" onClick={() => setMenuOpen(!menuOpen)}>
-                    <FaBars />
+                    {menuOpen ? <FaTimes /> : <FaBars />}
                 </button>
                 <h1>iNube Claims</h1>
                 <div className="user-info">
@@ -93,51 +123,92 @@ const InvestigatorDashboard = () => {
                 </div>
             </header>
 
-            {/* Mobile Navigation */}
+            {/* Menu Overlay */}
+            <div 
+                className={`nav-overlay ${menuOpen ? 'open' : ''}`} 
+                onClick={closeMenu}
+            ></div>
+
+            {/* Enhanced Mobile Navigation */}
             <nav className={`mobile-nav ${menuOpen ? 'open' : ''}`}>
                 <div className="nav-header">
                     <div className="user-profile">
                         <FaUser className="profile-icon" />
                         <div className="user-details">
-                            <span className="user-name">{user.name}</span>
-                            <span className="user-role">Investigator</span>
+                            <span className="user-name">{user.name || 'Investigator User'}</span>
+                            <span className="user-role">
+                                <span className="user-role-badge">Investigator</span>
+                                {isUserOnline(user.id) ? ' • Online' : ''}
+                            </span>
                         </div>
                     </div>
                 </div>
 
                 <div className="nav-links">
-                    {menuItems.map((item) => (
-                        <button
-                            key={item.path}
-                            className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-                            onClick={() => {
-                                navigate(item.path);
-                                setMenuOpen(false);
-                            }}
-                        >
-                            <span className="icon">{item.icon}</span>
-                            <span className="title">{item.title}</span>
-                            {item.badge > 0 && (
-                                <span className="badge">{item.badge}</span>
-                            )}
+                    <div className="nav-section">
+                        <h3 className="nav-section-title">Main Navigation</h3>
+                        {menuItems.map((item) => (
+                            <button
+                                key={item.path}
+                                className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+                                onClick={() => {
+                                    navigate(item.path);
+                                    closeMenu();
+                                }}
+                            >
+                                <span className="icon">{item.icon}</span>
+                                <span className="title">{item.title}</span>
+                                {item.badge > 0 && (
+                                    <span className="badge">{item.badge}</span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    <div className="nav-section">
+                        <h3 className="nav-section-title">Account</h3>
+                        <button className="nav-item">
+                            <span className="icon"><FaIdCard /></span>
+                            <span className="title">My Profile</span>
                         </button>
-                    ))}
+                    </div>
                 </div>
 
-                <button className="logout-button" onClick={handleLogout}>
-                    <FaSignOutAlt />
-                    <span>Logout</span>
-                </button>
+                <div className="nav-footer">
+                    <button className="logout-button" onClick={handleLogout}>
+                        <FaSignOutAlt />
+                        <span>Logout</span>
+                    </button>
+                </div>
             </nav>
 
             {/* Main Content */}
-            <main className={`main-content ${menuOpen ? 'blur' : ''}`} onClick={() => menuOpen && setMenuOpen(false)}>
+            <main className={`main-content ${menuOpen ? 'blur' : ''}`} onClick={() => menuOpen && closeMenu()}>
                 <Routes>
-                    <Route path="claims" element={<AssignedClaims onlineUsers={onlineUsers} isUserOnline={isUserOnline} />} />
-                    <Route path="investigation/:investigationId" element={<Investigation />} />
-                    <Route path="/" element={<Navigate to="claims" replace />} />
+                    <Route 
+                        path="claims" 
+                        element={
+                            <AssignedClaims 
+                                onlineUsers={onlineUsers} 
+                                isUserOnline={isUserOnline} 
+                            />
+                        } 
+                    />
+                    <Route 
+                        path="investigation/:investigationId" 
+                        element={<Investigation />} 
+                    />
+                    <Route 
+                        path="/" 
+                        element={<Navigate to="claims" replace />} 
+                    />
                 </Routes>
             </main>
+
+            {/* Quick Logout Button (Mobile) */}
+            <button className="quick-logout" onClick={handleLogout}>
+                <FaSignOutAlt />
+            </button>
 
             {/* Mobile Bottom Navigation */}
             <nav className="bottom-nav">

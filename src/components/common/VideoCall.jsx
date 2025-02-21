@@ -1,18 +1,41 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { FaCamera, FaCameraRetro, FaPhoneSlash, FaImage, FaComment, 
-         FaMicrophone, FaMicrophoneSlash, FaLightbulb, FaVideo, FaVideoSlash } from 'react-icons/fa';
+import { 
+  FaCamera, 
+  FaCameraRetro, 
+  FaPhoneSlash, 
+  FaImage, 
+  FaComment, 
+  FaMicrophone, 
+  FaMicrophoneSlash, 
+  FaLightbulb, 
+  FaVideo, 
+  FaVideoSlash,
+  FaDownload,
+  FaDesktop,
+  FaStop,
+  FaCog
+} from 'react-icons/fa';
 import { TiMessages } from 'react-icons/ti';
-import { uploadScreenshot, startRecording } from '../../utils/azureStorageUtils';
+import { 
+    uploadScreenshot, 
+    uploadRecording, 
+    startRecording,
+    getPresignedUploadUrl,
+    calculateStorageUsage,
+    getDownloadUrl
+  } from '../../utils/awss3storage';
 import './VideoCall.css';
 
 const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
+    // State variables
     const [localStream, setLocalStream] = useState(null);
     const [remoteStream, setRemoteStream] = useState(null);
     const [isBackCamera, setIsBackCamera] = useState(role === 'investigator');
     const [isCameraReady, setIsCameraReady] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [isTorchOn, setIsTorchOn] = useState(false);
+    const [isVideoOff, setIsVideoOff] = useState(false);
     const [showChat, setShowChat] = useState(false);
     const [isChatMinimized, setIsChatMinimized] = useState(false);
     const [messages, setMessages] = useState([]);
@@ -24,25 +47,270 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingUrl, setRecordingUrl] = useState(null);
-    const [uploadStatus, setUploadStatus] = useState({ uploading: false, progress: 0 });
+    const [isScreenSharing, setIsScreenSharing] = useState(false);
+    const [uploadStatus, setUploadStatus] = useState({ 
+      uploading: false, 
+      progress: 0, 
+      type: null, 
+      fileName: null 
+    });
+    const [callStats, setCallStats] = useState({
+      duration: 0,
+      bytesTransferred: 0,
+      resolution: '',
+      bandwidth: 0,
+      connectionQuality: 'unknown'
+    });
+    const [availableDevices, setAvailableDevices] = useState({
+      cameras: [],
+      microphones: []
+    });
+    const [showSettings, setShowSettings] = useState(false);
 
+    // Refs
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const peerConnectionRef = useRef(null);
     const mediaStreamRef = useRef(null);
     const chatMessagesRef = useRef(null);
     const recordingStateRef = useRef(null);
+    const callTimerRef = useRef(null);
+    const screenStreamRef = useRef(null);
+    const statsIntervalRef = useRef(null);
+    const reconnectAttemptRef = useRef(0);
+    const mediaConstraintsRef = useRef({
+      video: {
+        facingMode: isBackCamera ? 'environment' : 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
 
     // WebRTC configuration
     const configuration = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
+            { urls: 'stun:stun2.l.google.com:19302' },
+            {
+              urls: 'turn:global.turn.twilio.com:3478?transport=udp',
+              username: 'your_twilio_username', // Replace with actual credentials from env vars
+              credential: 'your_twilio_credential'
+            }
         ],
-        iceCandidatePoolSize: 10
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        sdpSemantics: 'unified-plan'
     };
+    
+    // Handle incoming socket events
+    useEffect(() => {
+        if (!socket) return;
 
+        const handleUserDisconnected = ({ userId }) => {
+            console.log('User disconnected:', userId);
+            toast.warning('Participant disconnected. They may rejoin shortly.');
+        };
+
+        const handleCallEnded = () => {
+            console.log('Call ended by peer');
+            cleanupCall();
+            onEndCall();
+        };
+
+        const handleParticipantRejoined = ({ role: rejoiningRole }) => {
+            console.log('Participant rejoined:', rejoiningRole);
+            toast.info(`${rejoiningRole} has rejoined the call`);
+        };
+        
+        const handleRecordingStatus = async ({ isRecording: remoteRecording, startedBy, stoppedBy, timestamp }) => {
+            console.log(`Recording status update: ${remoteRecording ? 'started' : 'stopped'}`);
+            
+            if (remoteRecording) {
+                // Recording started
+                toast.info(`Recording started by ${startedBy}`);
+                
+                // If I'm the investigator and supervisor started recording
+                if (role === 'investigator' && startedBy === 'supervisor' && !isRecording) {
+                    try {
+                        // Start actual recording on investigator device
+                        const stream = localVideoRef.current?.srcObject;
+                        if (!stream) {
+                            const errorMsg = 'No video stream available to record';
+                            console.error(errorMsg);
+                            toast.error(errorMsg);
+                            
+                            // Notify supervisor of failure with specific reason
+                            socket.emit('recording_error', { 
+                                callId,
+                                error: { message: errorMsg }
+                            });
+                            return;
+                        }
+                        
+                        // Check for video tracks
+                        if (stream.getVideoTracks().length === 0) {
+                            const errorMsg = 'No video track available to record';
+                            console.error(errorMsg);
+                            toast.error(errorMsg);
+                            socket.emit('recording_error', { callId, error: { message: errorMsg } });
+                            return;
+                        }
+                        
+                        console.log('Starting recording with stream:', stream.id, 'tracks:', stream.getTracks().map(t => t.kind).join(','));
+                        
+                        // Start recording with enhanced options
+                        recordingStateRef.current = await startRecording(
+                            claimNumber,
+                            callId,
+                            stream,
+                            {
+                                onProgressUpdate: (progress) => {
+                                    setUploadStatus({
+                                        uploading: true,
+                                        progress,
+                                        type: 'recording',
+                                        fileName: `call-${callId}-${new Date().toISOString().slice(0, 10)}.webm`
+                                    });
+                                }
+                            }
+                        );
+                        
+                        setIsRecording(true);
+                    } catch (error) {
+                        const errorMsg = `Failed to start recording on investigator device: ${error.message || 'Unknown error'}`;
+                        console.error(errorMsg, error);
+                        toast.error('Failed to start recording');
+                        
+                        // Notify supervisor of failure
+                        socket.emit('recording_error', { 
+                            callId,
+                            error: { message: errorMsg }
+                        });
+                    }
+                } else if (!isRecording) {
+                    // Update UI for non-recording participant
+                    setIsRecording(true);
+                }
+            } else {
+                // Recording stopped
+                toast.info(`Recording stopped by ${stoppedBy}`);
+                
+                // If I'm the investigator and have an active recording
+                if (role === 'investigator' && recordingStateRef.current) {
+                    try {
+                        // Stop recording and upload
+                        const blobUrl = await recordingStateRef.current.stopRecording();
+                        
+                        if (blobUrl) {
+                            setRecordingUrl(blobUrl);
+                            
+                            // Notify all participants that recording is available
+                            socket.emit('recording_completed', {
+                                callId,
+                                recordingUrl: blobUrl,
+                                recordedBy: role,
+                                timestamp: new Date().toISOString()
+                            });
+                        } else {
+                            console.warn('Recording stopped but no blob URL was returned');
+                        }
+                        
+                        // Reset recording state
+                        recordingStateRef.current = null;
+                    } catch (error) {
+                        const errorMsg = `Error stopping recording after remote request: ${error.message || 'Unknown error'}`;
+                        console.error(errorMsg, error);
+                        toast.error('Failed to save recording');
+                        
+                        // Notify others of failure
+                        socket.emit('recording_error', { 
+                            callId,
+                            error: { message: errorMsg }
+                        });
+                    }
+                }
+                
+                // Always update UI
+                setIsRecording(false);
+                setUploadStatus(prev => ({...prev, uploading: false, progress: 0}));
+            }
+        };
+        
+        const handleRecordingError = ({ message }) => {
+            toast.error(`Recording error: ${message}`);
+            
+            // Reset local recording state
+            setIsRecording(false);
+            if (recordingStateRef.current) {
+                try {
+                    // Try to stop any ongoing recording
+                    recordingStateRef.current.stopRecording().catch(err => 
+                        console.error('Failed to stop recording after error:', err)
+                    );
+                    recordingStateRef.current = null;
+                } catch (err) {
+                    console.error('Error cleaning up recording after error:', err);
+                }
+            }
+            
+            setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
+        };
+        
+        const handleRecordingAvailable = ({ recordingUrl, recordedBy, timestamp }) => {
+            toast.success(`Recording is now available from ${recordedBy}`);
+            
+            // Add to messages so it can be accessed later
+            setMessages(prev => [...prev, {
+                type: 'recording',
+                url: recordingUrl,
+                timestamp,
+                recordedBy,
+                message: `Recording from ${new Date(timestamp).toLocaleString()}`,
+                isLocal: recordedBy === role
+            }]);
+        };
+
+        const handleConnectionQuality = ({ quality, stats }) => {
+            // Update connection quality stats
+            setCallStats(prev => ({
+                ...prev,
+                connectionQuality: quality,
+                ...stats
+            }));
+
+            // Notify user if quality is poor
+            if (quality === 'poor' && callStats.connectionQuality !== 'poor') {
+                toast.warn('Connection quality is poor. Video may be degraded.');
+            }
+        };
+
+        socket.on('user_disconnected', handleUserDisconnected);
+        socket.on('call_ended', handleCallEnded);
+        socket.on('participant_rejoined', handleParticipantRejoined);
+        socket.on('recording_status', handleRecordingStatus);
+        socket.on('recording_error', handleRecordingError);
+        socket.on('recording_available', handleRecordingAvailable);
+        socket.on('connection_quality', handleConnectionQuality);
+
+        // Cleanup socket listeners
+        return () => {
+            socket.off('user_disconnected', handleUserDisconnected);
+            socket.off('call_ended', handleCallEnded);
+            socket.off('participant_rejoined', handleParticipantRejoined);
+            socket.off('recording_status', handleRecordingStatus);
+            socket.off('recording_error', handleRecordingError);
+            socket.off('recording_available', handleRecordingAvailable);
+            socket.off('connection_quality', handleConnectionQuality);
+        };
+    }, [socket, isRecording, role, claimNumber, callId, callStats.connectionQuality]);
+    
     // Get geolocation if investigator and share it periodically
     useEffect(() => {
         if (role === 'investigator' && navigator.geolocation) {
@@ -51,7 +319,11 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                     const locationData = {
                         latitude: position.coords.latitude,
                         longitude: position.coords.longitude,
-                        accuracy: position.coords.accuracy
+                        accuracy: position.coords.accuracy,
+                        altitude: position.coords.altitude,
+                        heading: position.coords.heading,
+                        speed: position.coords.speed,
+                        timestamp: position.timestamp
                     };
                     setCurrentLocation(locationData);
                     
@@ -68,12 +340,159 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                     console.error('Geolocation error:', error);
                     toast.warning('Unable to access location. Some features may be limited.');
                 },
-                { enableHighAccuracy: true, maximumAge: 10000, timeout: 27000 }
+                { 
+                    enableHighAccuracy: true, 
+                    maximumAge: 10000, 
+                    timeout: 27000 
+                }
             );
             
             return () => navigator.geolocation.clearWatch(watchId);
         }
-    }, [role, socket, isCallInitialized]);
+    }, [role, socket, isCallInitialized, callId]);
+
+    // Call timer to track duration
+    useEffect(() => {
+        if (isCallInitialized) {
+            const startTime = Date.now();
+            
+            callTimerRef.current = setInterval(() => {
+                const duration = Math.floor((Date.now() - startTime) / 1000);
+                setCallStats(prev => ({ ...prev, duration }));
+            }, 1000);
+            
+            return () => {
+                if (callTimerRef.current) {
+                    clearInterval(callTimerRef.current);
+                }
+            };
+        }
+    }, [isCallInitialized]);
+
+    // Initialize call statistics monitoring
+    useEffect(() => {
+        if (isCallInitialized && peerConnectionRef.current) {
+            const getStats = async () => {
+                try {
+                    const stats = await peerConnectionRef.current.getStats();
+                    let bytesTransferred = 0;
+                    let bandwidth = 0;
+                    let resolution = '';
+                    let packetLoss = 0;
+                    
+                    stats.forEach(stat => {
+                        // Calculate bandwidth and bytes transferred
+                        if (stat.type === 'outbound-rtp' && stat.bytesSent) {
+                            bytesTransferred += stat.bytesSent;
+                            if (stat.timestamp && stat.prevTimestamp && stat.bytesSent && stat.prevBytesSent) {
+                                const timeDiff = stat.timestamp - stat.prevTimestamp;
+                                if (timeDiff > 0) {
+                                    const bitsSent = 8 * (stat.bytesSent - stat.prevBytesSent);
+                                    const kbps = Math.round(bitsSent / timeDiff);
+                                    bandwidth = kbps;
+                                }
+                            }
+                            
+                            // Save current values for next calculation
+                            stat.prevBytesSent = stat.bytesSent;
+                            stat.prevTimestamp = stat.timestamp;
+                        }
+                        
+                        // Get resolution
+                        if (stat.type === 'track' && stat.kind === 'video' && stat.frameWidth && stat.frameHeight) {
+                            resolution = `${stat.frameWidth}x${stat.frameHeight}`;
+                        }
+                        
+                        // Get packet loss
+                        if (stat.type === 'remote-inbound-rtp' && typeof stat.packetsLost === 'number') {
+                            packetLoss = stat.packetsLost;
+                        }
+                    });
+                    
+                    // Determine connection quality
+                    let connectionQuality = 'good';
+                    if (bandwidth < 100 || packetLoss > 10) {
+                        connectionQuality = 'poor';
+                    } else if (bandwidth < 500 || packetLoss > 5) {
+                        connectionQuality = 'fair';
+                    }
+                    
+                    setCallStats(prev => ({
+                        ...prev,
+                        bytesTransferred,
+                        bandwidth,
+                        resolution,
+                        connectionQuality
+                    }));
+                    
+                    // Share connection stats with other participant
+                    if (socket) {
+                        socket.emit('connection_stats', {
+                            callId,
+                            stats: {
+                                bandwidth,
+                                resolution,
+                                packetLoss
+                            },
+                            quality: connectionQuality
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error getting call stats:', error);
+                }
+            };
+            
+            statsIntervalRef.current = setInterval(getStats, 5000);
+            
+            return () => {
+                if (statsIntervalRef.current) {
+                    clearInterval(statsIntervalRef.current);
+                }
+            };
+        }
+    }, [isCallInitialized, socket, callId]);
+
+    // Enumerate available devices
+    const getAvailableDevices = useCallback(async () => {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            
+            const cameras = devices
+                .filter(device => device.kind === 'videoinput')
+                .map(device => ({
+                    id: device.deviceId,
+                    label: device.label || `Camera ${device.deviceId.slice(0, 5)}`
+                }));
+                
+            const microphones = devices
+                .filter(device => device.kind === 'audioinput')
+                .map(device => ({
+                    id: device.deviceId,
+                    label: device.label || `Microphone ${device.deviceId.slice(0, 5)}`
+                }));
+                
+            setAvailableDevices({
+                cameras,
+                microphones
+            });
+        } catch (error) {
+            console.error('Error enumerating devices:', error);
+        }
+    }, []);
+
+    // Get available devices on component mount
+    useEffect(() => {
+        if (navigator.mediaDevices) {
+            getAvailableDevices();
+            
+            // Listen for device changes
+            navigator.mediaDevices.addEventListener('devicechange', getAvailableDevices);
+            
+            return () => {
+                navigator.mediaDevices.removeEventListener('devicechange', getAvailableDevices);
+            };
+        }
+    }, [getAvailableDevices]);
 
     const initializeCall = async (isRefresh = false) => {
         try {
@@ -117,31 +536,27 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         try {
             console.log('Setting up media stream, camera:', isBackCamera ? 'back' : 'front');
             
-            const constraints = {
-                video: {
-                    facingMode: isBackCamera ? 'environment' : 'user',
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
-            };
-
+            // Using constraints from ref to maintain state between function calls
+            const constraints = mediaConstraintsRef.current;
+    
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log('Got media stream:', stream.getTracks().map(t => t.kind));
-
+            console.log('Got media stream:', stream.getTracks().map(t => `${t.kind} (${t.label})`));
+    
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
+                
+                // Explicitly handle mirroring for investigator
+                if (role === 'investigator') {
+                    // Mirror only for front camera
+                    localVideoRef.current.classList.toggle('mirror-video', !isBackCamera);
+                }
             }
-
+    
             setLocalStream(stream);
             mediaStreamRef.current = stream;
             setIsCameraReady(true);
             setHasMediaPermissions(true);
-
+    
             return stream;
         } catch (error) {
             console.error('Error setting up media stream:', error);
@@ -150,12 +565,12 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             throw error;
         }
     };
-
+    
     const setupPeerConnectionHandlers = () => {
         if (!peerConnectionRef.current) return;
 
         peerConnectionRef.current.ontrack = (event) => {
-            console.log('Received remote track');
+            console.log('Received remote track:', event.track.kind);
             if (remoteVideoRef.current && event.streams[0]) {
                 remoteVideoRef.current.srcObject = event.streams[0];
                 setRemoteStream(event.streams[0]);
@@ -171,6 +586,23 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         peerConnectionRef.current.onconnectionstatechange = () => {
             console.log('Connection state:', peerConnectionRef.current.connectionState);
             handleConnectionStateChange();
+        };
+        
+        peerConnectionRef.current.oniceconnectionstatechange = () => {
+            console.log('ICE connection state:', peerConnectionRef.current.iceConnectionState);
+            
+            // Handle dropped connections more aggressively
+            if (peerConnectionRef.current.iceConnectionState === 'failed') {
+                console.log('ICE connection failed, attempting recovery...');
+                
+                // Try to restart ICE
+                if (peerConnectionRef.current.restartIce) {
+                    peerConnectionRef.current.restartIce();
+                } else {
+                    // Fallback for browsers that don't support restartIce
+                    handleConnectionStateChange();
+                }
+            }
         };
     };
 
@@ -211,6 +643,13 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             );
         }
         
+        // Stop screensharing if active
+        if (isScreenSharing && screenStreamRef.current) {
+            screenStreamRef.current.getTracks().forEach(track => track.stop());
+            screenStreamRef.current = null;
+            setIsScreenSharing(false);
+        }
+        
         // Stop all tracks in local stream
         if (localStream) {
             localStream.getTracks().forEach(track => {
@@ -240,8 +679,20 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             peerConnectionRef.current.ontrack = null;
             peerConnectionRef.current.onicecandidate = null;
             peerConnectionRef.current.onconnectionstatechange = null;
+            peerConnectionRef.current.oniceconnectionstatechange = null;
             peerConnectionRef.current.close();
             peerConnectionRef.current = null;
+        }
+
+        // Clear intervals
+        if (callTimerRef.current) {
+            clearInterval(callTimerRef.current);
+            callTimerRef.current = null;
+        }
+        
+        if (statsIntervalRef.current) {
+            clearInterval(statsIntervalRef.current);
+            statsIntervalRef.current = null;
         }
 
         // Reset state
@@ -249,8 +700,10 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         setIsCallInitialized(false);
         setHasMediaPermissions(false);
         setIsRecording(false);
+        setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
         mediaStreamRef.current = null;
         recordingStateRef.current = null;
+        reconnectAttemptRef.current = 0;
 
         // Clear session storage
         sessionStorage.removeItem('callState');
@@ -268,54 +721,6 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         cleanupCall();
         onEndCall();
     };
-
-    // Handle incoming socket events
-    useEffect(() => {
-        if (!socket) return;
-
-        const handleUserDisconnected = ({ userId }) => {
-            console.log('User disconnected:', userId);
-            toast.warning('Participant disconnected. They may rejoin shortly.');
-        };
-
-        const handleCallEnded = () => {
-            console.log('Call ended by peer');
-            cleanupCall();
-            onEndCall();
-        };
-
-        const handleParticipantRejoined = ({ role: rejoiningRole }) => {
-            console.log('Participant rejoined:', rejoiningRole);
-            toast.info(`${rejoiningRole} has rejoined the call`);
-        };
-        
-        const handleRecordingStatus = ({ isRecording: remoteRecording, startedBy, stoppedBy }) => {
-            if (remoteRecording) {
-                toast.info(`Recording started by ${startedBy}`);
-                if (!isRecording) {
-                    setIsRecording(true);
-                }
-            } else {
-                toast.info(`Recording stopped by ${stoppedBy}`);
-                if (isRecording && !recordingStateRef.current) {
-                    setIsRecording(false);
-                }
-            }
-        };
-
-        socket.on('user_disconnected', handleUserDisconnected);
-        socket.on('call_ended', handleCallEnded);
-        socket.on('participant_rejoined', handleParticipantRejoined);
-        socket.on('recording_status', handleRecordingStatus);
-
-        // Cleanup socket listeners
-        return () => {
-            socket.off('user_disconnected', handleUserDisconnected);
-            socket.off('call_ended', handleCallEnded);
-            socket.off('participant_rejoined', handleParticipantRejoined);
-            socket.off('recording_status', handleRecordingStatus);
-        };
-    }, [socket, isRecording]);
 
     // Handle WebRTC reconnection
     useEffect(() => {
@@ -346,7 +751,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         try {
             if (mediaStreamRef.current) {
                 const track = mediaStreamRef.current.getVideoTracks()[0];
-                if (track.getCapabilities().torch) {
+                if (track && track.getCapabilities && track.getCapabilities().torch) {
                     await track.applyConstraints({
                         advanced: [{ torch: !isTorchOn }]
                     });
@@ -372,7 +777,18 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         }
     };
 
-    // Fixed camera toggle function to properly handle track replacement
+    const toggleVideo = () => {
+        if (localStream) {
+            const videoTracks = localStream.getVideoTracks();
+            videoTracks.forEach(track => {
+                track.enabled = isVideoOff;
+            });
+            setIsVideoOff(!isVideoOff);
+            socket.emit('participant_video_state', { callId, isVideoOff: !isVideoOff });
+        }
+    };
+
+    // Camera toggle function with improved track replacement
     const toggleCamera = async () => {
         try {
             if (!peerConnectionRef.current) {
@@ -395,6 +811,12 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                 height: { ideal: 720 }
             };
 
+            // Update constraints reference
+            mediaConstraintsRef.current = {
+                ...mediaConstraintsRef.current,
+                video: videoConstraints
+            };
+
             const newStream = await navigator.mediaDevices.getUserMedia({
                 video: videoConstraints,
                 audio: false // We'll handle audio separately
@@ -407,9 +829,15 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                 newStream.addTrack(audioTrack);
             }
 
+            // Apply mute state to the new audio track
+            if (isMuted && audioTrack) {
+                audioTrack.enabled = false;
+            }
+
             // Update local video
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = newStream;
+                localVideoRef.current.classList.toggle('mirror-video', !newIsBackCamera);
             }
 
             // Update state
@@ -420,16 +848,23 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
 
             // Remove all existing senders
             const senders = peerConnectionRef.current.getSenders();
-            senders.forEach(sender => {
-                if (sender.track) {
-                    peerConnectionRef.current.removeTrack(sender);
-                }
-            });
-
-            // Add new tracks to peer connection
-            newStream.getTracks().forEach(track => {
-                peerConnectionRef.current.addTrack(track, newStream);
-            });
+            const videoSender = senders.find(sender => 
+                sender.track && sender.track.kind === 'video'
+            );
+            
+            const audioSender = senders.find(sender => 
+                sender.track && sender.track.kind === 'audio'
+            );
+            
+            // Replace video track
+            if (videoSender && newStream.getVideoTracks()[0]) {
+                await videoSender.replaceTrack(newStream.getVideoTracks()[0]);
+            }
+            
+            // Replace audio track if needed
+            if (audioSender && newStream.getAudioTracks()[0]) {
+                await audioSender.replaceTrack(newStream.getAudioTracks()[0]);
+            }
 
             // Create and send a new offer to renegotiate the connection
             const offer = await peerConnectionRef.current.createOffer({
@@ -467,31 +902,53 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
     };
 
     const handleConnectionStateChange = () => {
-        if (peerConnectionRef.current) {
-            const state = peerConnectionRef.current.connectionState;
-            console.log('Connection state changed:', state);
+        if (!peerConnectionRef.current) return;
+        
+        const state = peerConnectionRef.current.connectionState;
+        console.log('Connection state changed:', state);
 
-            switch (state) {
-                case 'disconnected':
-                    // Try to reconnect if disconnected
-                    console.log('Attempting reconnection');
-                    initializeCall(true).catch(error => {
+        switch (state) {
+            case 'disconnected':
+                // Try to reconnect with exponential backoff
+                const delay = Math.min(1000 * (2 ** reconnectAttemptRef.current), 30000);
+                console.log(`Attempting reconnection in ${delay / 1000} seconds (attempt ${reconnectAttemptRef.current + 1})`);
+                
+                toast.warning(`Connection interrupted. Reconnecting in ${Math.ceil(delay / 1000)} seconds...`);
+                
+                setTimeout(async () => {
+                    try {
+                        reconnectAttemptRef.current++;
+                        await initializeCall(true);
+                        toast.success('Reconnected successfully');
+                        reconnectAttemptRef.current = 0;
+                    } catch (error) {
                         console.error('Reconnection attempt failed:', error);
-                        toast.error('Connection lost. Please rejoin.');
-                        cleanupCall();
-                    });
-                    break;
-                case 'failed':
-                    toast.error('Connection failed. Please check your internet connection.');
-                    break;
-                case 'connected':
-                    console.log('Connected to peer');
-                    break;
-            }
+                        handleConnectionStateChange(); // Try again with increased backoff
+                    }
+                }, delay);
+                break;
+                
+            case 'failed':
+                toast.error('Connection failed. Please check your internet connection.');
+                // After multiple failures, suggest ending the call
+                if (reconnectAttemptRef.current >= 5) {
+                    toast.error('Unable to establish a stable connection. Consider ending the call and trying again.');
+                }
+                break;
+                
+            case 'connected':
+                console.log('Connected to peer');
+                toast.success('Connected to peer');
+                reconnectAttemptRef.current = 0;
+                break;
+                
+            default:
+                // Do nothing for other states
+                break;
         }
     };
 
-    // Fixed to properly handle screenshots for both roles with investigator location and Azure storage
+    // Enhanced screenshot capture with improved AWS upload
     const takeScreenshot = async () => {
         try {
             let videoToCapture;
@@ -504,7 +961,10 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                     locationInfo = {
                         latitude: currentLocation.latitude,
                         longitude: currentLocation.longitude,
-                        accuracy: currentLocation.accuracy
+                        accuracy: currentLocation.accuracy,
+                        altitude: currentLocation.altitude,
+                        heading: currentLocation.heading,
+                        speed: currentLocation.speed
                     };
                 }
             } else {
@@ -539,17 +999,23 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             canvas.width = videoToCapture.videoWidth;
             canvas.height = videoToCapture.videoHeight;
             
-            // Draw the video frame (handle mirroring for front camera)
-            if (role === 'investigator' && !isBackCamera) {
-                // Front camera needs to be un-mirrored for screenshot
-                context.translate(canvas.width, 0);
-                context.scale(-1, 1);
-                context.drawImage(videoToCapture, 0, 0, -canvas.width, canvas.height);
+            // Draw the video frame (handle mirroring based on camera and role)
+            if (role === 'investigator') {
+                if (!isBackCamera) {
+                    // Front camera needs to be un-mirrored for screenshot
+                    context.translate(canvas.width, 0);
+                    context.scale(-1, 1);
+                    context.drawImage(videoToCapture, 0, 0, -canvas.width, canvas.height);
+                } else {
+                    // Back camera - draw normally
+                    context.drawImage(videoToCapture, 0, 0, canvas.width, canvas.height);
+                }
             } else {
+                // For supervisor, draw normally
                 context.drawImage(videoToCapture, 0, 0, canvas.width, canvas.height);
             }
             
-            // Add location information if available (for both roles)
+            // Add location and timestamp information if available
             if (locationInfo) {
                 // Format the location text
                 const locationText = `Lat: ${locationInfo.latitude.toFixed(6)}, Long: ${locationInfo.longitude.toFixed(6)}`;
@@ -578,7 +1044,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             }
             
             const timestamp = new Date().toISOString();
-            const screenshotDataUrl = canvas.toDataURL('image/jpeg');
+            const screenshotDataUrl = canvas.toDataURL('image/jpeg', 0.95); // Higher quality JPEG
             
             // Create screenshot metadata
             const screenshot = {
@@ -596,9 +1062,14 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             setMessages(prev => [...prev, { ...screenshot, isLocal: true }]);
             toast.success('Screenshot captured');
 
-            // Save to Azure Storage
+            // Save to S3 Storage with improved progress tracking
             if (claimNumber) {
-                setUploadStatus({ uploading: true, progress: 10 });
+                setUploadStatus({ 
+                    uploading: true, 
+                    progress: 10, 
+                    type: 'screenshot',
+                    fileName: `screenshot-${new Date().toISOString().replace(/[:.-]/g, '_')}.jpg`
+                });
                 
                 try {
                     const blobUrl = await uploadScreenshot(
@@ -608,23 +1079,30 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                         {
                             timestamp: timestamp,
                             capturedBy: role,
-                            location: locationInfo
+                            location: locationInfo,
+                            resolution: `${canvas.width}x${canvas.height}`
+                        },
+                        (progress) => {
+                            setUploadStatus(prev => ({
+                                ...prev,
+                                progress: progress
+                            }));
                         }
                     );
                     
-                    // Update the screenshot with the Azure URL
+                    // Update the screenshot with the S3 URL
                     setMessages(prev => prev.map(msg => 
                         msg.id === screenshot.id 
-                            ? { ...msg, azureUrl: blobUrl }
+                            ? { ...msg, s3Url: blobUrl }
                             : msg
                     ));
                     
                     toast.success('Screenshot saved to cloud storage');
-                    setUploadStatus({ uploading: false, progress: 100 });
+                    setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
                 } catch (error) {
-                    console.error('Failed to upload screenshot to Azure:', error);
+                    console.error('Failed to upload screenshot to S3:', error);
                     toast.error('Failed to save screenshot to cloud storage');
-                    setUploadStatus({ uploading: false, progress: 0 });
+                    setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
                 }
             }
 
@@ -640,142 +1118,337 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         } catch (error) {
             console.error('Error taking screenshot:', error);
             toast.error('Failed to capture screenshot');
-            setUploadStatus({ uploading: false, progress: 0 });
+            setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
         }
     };
     
     // Toggle recording function
     const toggleRecording = async () => {
         if (isRecording) {
-            await stopRecording();
+          await stopRecording();
         } else {
-            await startCallRecording();
+          await startCallRecording();
         }
     };
-    
-    // Start recording function
+      
+    // Improved startCallRecording function with better error handling
     const startCallRecording = async () => {
-        if (!claimNumber) {
+        // More detailed claimNumber check
+        if (!claimNumber || claimNumber.trim() === '') {
+            console.error('Cannot start recording: No claim number provided');
             toast.error('Cannot start recording: No claim number provided');
             return;
         }
         
         try {
-            // For supervisor, record the investigator's stream
-            // For investigator, record their own stream
-            const streamToRecord = role === 'supervisor' 
-                ? remoteVideoRef.current.srcObject 
-                : localVideoRef.current.srcObject;
+            // For supervisor, send command to investigator to start recording
+            if (role === 'supervisor') {
+                toast.info('Starting recording on investigator device...');
+                socket.emit('recording_status', { 
+                    callId, 
+                    isRecording: true,
+                    startedBy: role,
+                    timestamp: new Date().toISOString()
+                });
                 
-            if (!streamToRecord) {
-                toast.error('No video stream available to record');
-                return;
+                // Local UI updates for supervisor
+                setIsRecording(true);
+                
+            } else if (role === 'investigator') {
+                toast.info('Starting recording...');
+                setUploadStatus({ 
+                    uploading: true, 
+                    progress: 0, 
+                    type: 'recording',
+                    fileName: `call-${callId}-${new Date().toISOString().slice(0, 10)}.webm`
+                });
+                
+                // Improved stream checking with more detailed error info
+                const stream = localVideoRef.current?.srcObject;
+                if (!stream) {
+                    const errorMsg = 'No video stream available to record';
+                    console.error(errorMsg);
+                    toast.error(errorMsg);
+                    setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
+                    
+                    // Notify others of specific failure reason
+                    socket.emit('recording_error', { 
+                        callId,
+                        error: { message: errorMsg }
+                    });
+                    return;
+                }
+                
+                // Check for video tracks
+                if (stream.getVideoTracks().length === 0) {
+                    const errorMsg = 'No video track in stream';
+                    console.error(errorMsg);
+                    toast.error(errorMsg);
+                    setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
+                    socket.emit('recording_error', { callId, error: { message: errorMsg } });
+                    return;
+                }
+                
+                // Start recording with more detailed error handling
+                try {
+                    console.log('Starting recording with stream:', stream.id, 'tracks:', stream.getTracks().map(t => t.kind).join(','));
+                    recordingStateRef.current = await startRecording(
+                        claimNumber,
+                        callId,
+                        stream,
+                        {
+                            onProgressUpdate: (progress) => {
+                                setUploadStatus(prev => ({
+                                    ...prev,
+                                    progress
+                                }));
+                            }
+                        }
+                    );
+                    
+                    setIsRecording(true);
+                    
+                    // Notify others (if investigator initiates recording)
+                    socket.emit('recording_status', { 
+                        callId, 
+                        isRecording: true,
+                        startedBy: role,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (recordingError) {
+                    // Handle specific recording errors
+                    const errorMsg = `Recording failed: ${recordingError.message || 'Unknown error'}`;
+                    console.error(errorMsg, recordingError);
+                    toast.error(errorMsg);
+                    setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
+                    
+                    socket.emit('recording_error', { 
+                        callId,
+                        error: { message: errorMsg }
+                    });
+                }
             }
-            
-            toast.info('Starting recording...');
-            setUploadStatus({ uploading: true, progress: 0 });
-            
-            // Start recording
-            recordingStateRef.current = await startRecording(
-                claimNumber,
-                callId,
-                streamToRecord
-            );
-            
-            setIsRecording(true);
-            toast.success('Recording started');
-            
-            // Notify other participants
-            socket.emit('recording_status', { 
-                callId, 
-                isRecording: true,
-                startedBy: role,
-                timestamp: new Date().toISOString()
-            });
         } catch (error) {
-            console.error('Failed to start recording:', error);
-            toast.error('Failed to start recording');
+            // Generic error catch with detailed error reporting
+            const errorMsg = `Failed to start recording: ${error.message || 'Unknown error'}`;
+            console.error(errorMsg, error);
+            toast.error(errorMsg);
             setIsRecording(false);
-            setUploadStatus({ uploading: false, progress: 0 });
+            setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
+            
+            socket.emit('recording_error', { 
+                callId,
+                error: { message: errorMsg }
+            });
         }
     };
-    
-    // Stop recording function
+  
+    // Improved stopRecording function with better error handling
     const stopRecording = async () => {
-        if (!recordingStateRef.current) {
-            setIsRecording(false);
-            return;
-        }
-        
-        try {
+        if (role === 'supervisor') {
+            // Supervisor just sends the stop command
             toast.info('Stopping recording...');
-            setUploadStatus({ uploading: true, progress: 50 });
-            
-            // Stop recording and upload
-            const blobUrl = await recordingStateRef.current.stopRecording();
-            
-            if (blobUrl) {
-                setRecordingUrl(blobUrl);
-                toast.success('Recording saved to cloud storage');
-            }
-            
-            // Reset recording state
-            recordingStateRef.current = null;
-            setIsRecording(false);
-            setUploadStatus({ uploading: false, progress: 100 });
-            
-            // Notify other participants
             socket.emit('recording_status', { 
                 callId, 
                 isRecording: false,
                 stoppedBy: role,
                 timestamp: new Date().toISOString()
             });
-        } catch (error) {
-            console.error('Error stopping recording:', error);
-            toast.error('Failed to save recording');
+            
+            // Update UI immediately (the investigator will handle actual stopping)
             setIsRecording(false);
-            setUploadStatus({ uploading: false, progress: 0 });
+            
+        } else if (role === 'investigator') {
+            // Investigator does the actual recording stop and upload
+            if (!recordingStateRef.current) {
+                console.log('No active recording to stop');
+                setIsRecording(false);
+                return;
+            }
+            
+            try {
+                toast.info('Stopping recording and preparing upload...');
+                setUploadStatus(prev => ({
+                    ...prev,
+                    uploading: true,
+                    progress: 50
+                }));
+                
+                // Stop recording and get the blob URL
+                const blobUrl = await recordingStateRef.current.stopRecording();
+                
+                if (blobUrl) {
+                    setRecordingUrl(blobUrl);
+                    toast.success('Recording saved to cloud storage');
+                    
+                    // Notify everyone the recording is available
+                    socket.emit('recording_completed', {
+                        callId,
+                        recordingUrl: blobUrl,
+                        recordedBy: role,
+                        timestamp: new Date().toISOString()
+                    });
+                } else {
+                    console.warn('Recording stopped but no blob URL was returned');
+                }
+                
+                // Reset recording state
+                recordingStateRef.current = null;
+                setIsRecording(false);
+                setUploadStatus({ uploading: false, progress: 100, type: null, fileName: null });
+                
+                // If investigator initiated the stop, notify others
+                socket.emit('recording_status', { 
+                    callId, 
+                    isRecording: false,
+                    stoppedBy: role,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (error) {
+                const errorMsg = `Error stopping recording: ${error.message || 'Unknown error'}`;
+                console.error(errorMsg, error);
+                toast.error('Failed to save recording');
+                setIsRecording(false);
+                setUploadStatus({ uploading: false, progress: 0, type: null, fileName: null });
+                
+                // Notify others of failure
+                socket.emit('recording_error', { 
+                    callId,
+                    error: { message: errorMsg }
+                });
+            }
         }
     };
-
-    const shareScreen = async () => {
+    
+    // Enhanced screen sharing with better error handling
+    const toggleScreenSharing = async () => {
+        if (isScreenSharing) {
+            await stopScreenSharing();
+        } else {
+            await startScreenSharing();
+        }
+    };
+    
+    const startScreenSharing = async () => {
         try {
             const screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: true
+                video: { 
+                    cursor: 'always',
+                    displaySurface: 'monitor',
+                    logicalSurface: true,
+                    frameRate: 30
+                }
             });
+            
+            // Store reference to the screen stream for cleanup
+            screenStreamRef.current = screenStream;
             
             // Replace video track
             const videoTrack = screenStream.getVideoTracks()[0];
+            
+            if (!videoTrack) {
+                throw new Error('No video track available in screen share');
+            }
+            
+            // Listen for the end of screen sharing
+            videoTrack.addEventListener('ended', () => {
+                stopScreenSharing();
+            });
+            
             const sender = peerConnectionRef.current
                 .getSenders()
                 .find(s => s.track && s.track.kind === 'video');
                 
             if (sender) {
                 await sender.replaceTrack(videoTrack);
+                setIsScreenSharing(true);
+                
+                // Update local preview to show screen share
+                if (localVideoRef.current) {
+                    localVideoRef.current.srcObject = screenStream;
+                }
+                
+                toast.info('Screen sharing started');
+                
+                // Let the other person know we're screen sharing
+                socket.emit('screen_sharing_status', {
+                    callId,
+                    isScreenSharing: true
+                });
+            } else {
+                throw new Error('No video sender found in peer connection');
             }
         } catch (error) {
             console.error('Error sharing screen:', error);
-            toast.error('Failed to share screen');
+            // Handle user cancellation differently
+            if (error.name === 'NotAllowedError' || error.message.includes('Permission denied')) {
+                toast.info('Screen sharing was cancelled');
+            } else {
+                toast.error(`Failed to share screen: ${error.message}`);
+            }
+            
+            // Cleanup any partial screen share
+            if (screenStreamRef.current) {
+                screenStreamRef.current.getTracks().forEach(track => track.stop());
+                screenStreamRef.current = null;
+            }
         }
     };
 
     const stopScreenSharing = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: isBackCamera ? 'environment' : 'user' }
+            // Stop all screen share tracks
+            if (screenStreamRef.current) {
+                screenStreamRef.current.getTracks().forEach(track => track.stop());
+                screenStreamRef.current = null;
+            }
+            
+            // Get new camera stream
+            const newStream = await navigator.mediaDevices.getUserMedia({
+                video: { 
+                    facingMode: isBackCamera ? 'environment' : 'user',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
             });
             
-            const videoTrack = stream.getVideoTracks()[0];
+            // Replace the video track
             const sender = peerConnectionRef.current
                 .getSenders()
                 .find(s => s.track && s.track.kind === 'video');
                 
             if (sender) {
+                const videoTrack = newStream.getVideoTracks()[0];
                 await sender.replaceTrack(videoTrack);
+                
+                // Update local video preview
+                if (localVideoRef.current) {
+                    // Add the audio track from the existing stream if available
+                    if (mediaStreamRef.current && mediaStreamRef.current.getAudioTracks().length > 0) {
+                        newStream.addTrack(mediaStreamRef.current.getAudioTracks()[0]);
+                    }
+                    
+                    localVideoRef.current.srcObject = newStream;
+                    localVideoRef.current.classList.toggle('mirror-video', !isBackCamera);
+                }
+                
+                // Update mediaStreamRef with the new stream
+                mediaStreamRef.current = newStream;
+                setLocalStream(newStream);
             }
+            
+            setIsScreenSharing(false);
+            toast.info('Screen sharing stopped');
+            
+            // Notify other participant
+            socket.emit('screen_sharing_status', {
+                callId,
+                isScreenSharing: false
+            });
         } catch (error) {
             console.error('Error stopping screen share:', error);
+            toast.error(`Failed to stop screen sharing: ${error.message}`);
         }
     };
 
@@ -835,10 +1508,19 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             }
         };
 
+        const handleScreenSharingStatus = ({ isScreenSharing: remoteSharingScreen }) => {
+            if (remoteSharingScreen) {
+                toast.info('Remote participant is sharing their screen');
+            } else {
+                toast.info('Remote participant stopped sharing their screen');
+            }
+        };
+
         // Set up signaling handlers
         socket.on('video_offer', handleVideoOffer);
         socket.on('video_answer', handleVideoAnswer);
         socket.on('ice_candidate', handleIceCandidate);
+        socket.on('screen_sharing_status', handleScreenSharingStatus);
 
         // Create and send offer if investigator
         const createOffer = async () => {
@@ -864,6 +1546,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             socket.off('video_offer', handleVideoOffer);
             socket.off('video_answer', handleVideoAnswer);
             socket.off('ice_candidate', handleIceCandidate);
+            socket.off('screen_sharing_status', handleScreenSharingStatus);
         };
     }, [socket, isCallInitialized, role, localStream]);
 
@@ -933,7 +1616,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                     timestampText: new Date(data.timestamp).toLocaleString(),
                     capturedBy: data.capturedBy,
                     isLocal: false,
-                    azureUrl: data.azureUrl || null
+                    s3Url: data.s3Url || null
                 };
                 
                 setMessages(prev => [...prev, screenshot]);
@@ -974,6 +1657,11 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         }
     };
 
+    // Toggle settings panel
+    const toggleSettings = () => {
+        setShowSettings(!showSettings);
+    };
+
     // Auto-scroll chat when new messages arrive
     useEffect(() => {
         if (chatMessagesRef.current && !isChatMinimized) {
@@ -990,6 +1678,30 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
     const closeScreenshotModal = () => {
         setSelectedScreenshot(null);
     };
+    
+    // Format call duration for display
+    const formatDuration = (seconds) => {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = seconds % 60;
+        
+        if (hours > 0) {
+            return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+        
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    };
+    
+    // Format bytes for display
+    const formatBytes = (bytes) => {
+        if (bytes < 1024) {
+            return `${bytes} B`;
+        } else if (bytes < 1024 * 1024) {
+            return `${(bytes / 1024).toFixed(1)} KB`;
+        } else {
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        }
+    };
 
     return (
         <div className={`video-call-container ${role}`}>
@@ -1004,7 +1716,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                             autoPlay
                             playsInline
                             muted
-                            className={`video-fullscreen-stream ${!isBackCamera ? 'mirror-video' : ''}`}
+                            className={`video-fullscreen-stream ${!isBackCamera && !isScreenSharing ? 'mirror-video' : ''}`}
                         />
                     </div>
 
@@ -1020,28 +1732,55 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                         </div>
                     </div>
 
+                    {/* Call stats overlay */}
+                    <div className="call-stats-overlay">
+                        <div className="call-duration">
+                            {formatDuration(callStats.duration)}
+                        </div>
+                        <div className={`connection-quality ${callStats.connectionQuality}`}>
+                            {callStats.connectionQuality}
+                        </div>
+                    </div>
+
                     {uploadStatus.uploading && (
                         <div className="upload-progress">
-                            <div 
-                                className="progress-bar" 
-                                style={{width: `${uploadStatus.progress}%`}}
-                            ></div>
+                            <div className="upload-progress-info">
+                                <span>{uploadStatus.type === 'screenshot' ? 'Saving screenshot...' : 'Uploading recording...'}</span>
+                                <span>{uploadStatus.fileName}</span>
+                            </div>
+                            <div className="progress-container">
+                                <div 
+                                    className="progress-bar" 
+                                    style={{width: `${uploadStatus.progress}%`}}
+                                ></div>
+                                <span className="progress-text">{uploadStatus.progress}%</span>
+                            </div>
                         </div>
                     )}
 
                     <div className="video-controls-mobile">
-                        <button onClick={toggleCamera} disabled={!isCameraReady}>
+                        <button onClick={toggleCamera} disabled={!isCameraReady} title="Switch Camera">
                             {isBackCamera ? <FaCameraRetro /> : <FaCamera />}
                         </button>
                         {role === 'investigator' && (
-                            <button onClick={toggleTorch} disabled={!isCameraReady}>
+                            <button onClick={toggleTorch} disabled={!isCameraReady} title="Toggle Torch">
                                 <FaLightbulb className={isTorchOn ? 'torch-on' : ''} />
                             </button>
                         )}
-                        <button onClick={toggleMute}>
+                        <button onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
                             {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
                         </button>
-                        <button onClick={toggleChat} className={unreadMessages > 0 ? 'has-notification' : ''}>
+                        <button onClick={toggleVideo} title={isVideoOff ? "Turn Video On" : "Turn Video Off"}>
+                            {isVideoOff ? <FaVideoSlash /> : <FaVideo />}
+                        </button>
+                        <button 
+                            onClick={toggleScreenSharing} 
+                            className={isScreenSharing ? "active" : ""}
+                            title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
+                        >
+                            {isScreenSharing ? <FaStop /> : <FaDesktop />}
+                        </button>
+                        <button onClick={toggleChat} className={unreadMessages > 0 ? 'has-notification' : ''} title="Chat">
                             {unreadMessages > 0 ? (
                                 <>
                                     <TiMessages />
@@ -1051,19 +1790,26 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                                 <FaComment />
                             )}
                         </button>
-                        <button onClick={toggleRecording} className={isRecording ? "recording" : ""}>
+                        <button 
+                            onClick={toggleRecording} 
+                            className={isRecording ? "recording" : ""}
+                            title={isRecording ? "Stop Recording" : "Start Recording"}
+                        >
                             {isRecording ? <FaVideoSlash /> : <FaVideo />}
                         </button>
-                        <button onClick={handleEndCall} className="end-call">
+                        <button onClick={handleEndCall} className="end-call" title="End Call">
                             <FaPhoneSlash />
                         </button>
-                        <button onClick={takeScreenshot} disabled={!isCameraReady}>
+                        <button onClick={takeScreenshot} disabled={!isCameraReady} title="Take Screenshot">
                             <FaImage />
+                        </button>
+                        <button onClick={toggleSettings} className="settings-button" title="Settings">
+                            <FaCog />
                         </button>
                     </div>
                 </div>
             ) : (
-                // Supervisor layout remains mostly the same, just add chat and mute
+                // Supervisor layout
                 <div className="video-layout-supervisor">
                     {/* Large investigator stream */}
                     <div className="video-main-feed">
@@ -1076,12 +1822,34 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                         <div className="stream-label">Investigator Camera</div>
                     </div>
 
+                    {/* Call stats overlay */}
+                    <div className="call-stats-overlay">
+                        <div className="call-duration">
+                            {formatDuration(callStats.duration)}
+                        </div>
+                        <div className={`connection-quality ${callStats.connectionQuality}`}>
+                            {callStats.connectionQuality}
+                        </div>
+                        {callStats.resolution && (
+                            <div className="resolution-info">
+                                {callStats.resolution}
+                            </div>
+                        )}
+                    </div>
+
                     {uploadStatus.uploading && (
                         <div className="upload-progress">
-                            <div 
-                                className="progress-bar" 
-                                style={{width: `${uploadStatus.progress}%`}}
-                            ></div>
+                            <div className="upload-progress-info">
+                                <span>{uploadStatus.type === 'screenshot' ? 'Saving screenshot...' : 'Uploading recording...'}</span>
+                                <span>{uploadStatus.fileName}</span>
+                            </div>
+                            <div className="progress-container">
+                                <div 
+                                    className="progress-bar" 
+                                    style={{width: `${uploadStatus.progress}%`}}
+                                ></div>
+                                <span className="progress-text">{uploadStatus.progress}%</span>
+                            </div>
                         </div>
                     )}
 
@@ -1094,22 +1862,27 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                                 autoPlay
                                 playsInline
                                 muted
-                                className="video-small"
+                                className={`video-small ${!isBackCamera && !isScreenSharing ? 'mirror-video' : ''}`}
                             />
                             <div className="participant-label">You</div>
                         </div>
 
-                        {/* Placeholder for future participants */}
-                        <div className="participant-video placeholder">
-                            <div className="participant-label">Waiting for participant...</div>
-                        </div>
-
                         {/* Web controls */}
                         <div className="video-controls-web">
-                            <button onClick={toggleMute}>
+                            <button onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
                                 {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
                             </button>
-                            <button onClick={toggleChat} className={unreadMessages > 0 ? 'has-notification' : ''}>
+                            <button onClick={toggleVideo} title={isVideoOff ? "Turn Video On" : "Turn Video Off"}>
+                                {isVideoOff ? <FaVideoSlash /> : <FaVideo />}
+                            </button>
+                            <button 
+                                onClick={toggleScreenSharing} 
+                                className={isScreenSharing ? "active" : ""}
+                                title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
+                            >
+                                {isScreenSharing ? <FaStop /> : <FaDesktop />}
+                            </button>
+                            <button onClick={toggleChat} className={unreadMessages > 0 ? 'has-notification' : ''} title="Chat">
                                 {unreadMessages > 0 ? (
                                     <>
                                         <TiMessages />
@@ -1119,15 +1892,98 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                                     <FaComment />
                                 )}
                             </button>
-                            <button onClick={toggleRecording} className={isRecording ? "recording" : ""}>
+                            <button 
+                                onClick={toggleRecording} 
+                                className={isRecording ? "recording" : ""}
+                                title={isRecording ? "Stop Recording" : "Start Recording"}
+                            >
                                 {isRecording ? <FaVideoSlash /> : <FaVideo />}
                             </button>
-                            <button onClick={handleEndCall} className="end-call">
+                            <button onClick={handleEndCall} className="end-call" title="End Call">
                                 <FaPhoneSlash />
                             </button>
-                            <button onClick={takeScreenshot} disabled={!remoteStream}>
+                            <button onClick={takeScreenshot} disabled={!remoteStream} title="Take Screenshot">
                                 <FaImage />
                             </button>
+                            <button onClick={toggleSettings} className="settings-button" title="Settings">
+                                <FaCog />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Settings Panel */}
+            {showSettings && (
+                <div className="settings-panel">
+                    <div className="settings-header">
+                        <h3>Call Settings</h3>
+                        <button className="close-button" onClick={toggleSettings}>×</button>
+                    </div>
+                    <div className="settings-content">
+                        <div className="settings-section">
+                            <h4>Connection Info</h4>
+                            <div className="settings-info">
+                                <p>Duration: {formatDuration(callStats.duration)}</p>
+                                <p>Quality: <span className={callStats.connectionQuality}>{callStats.connectionQuality}</span></p>
+                                <p>Bandwidth: {callStats.bandwidth} kbps</p>
+                                <p>Resolution: {callStats.resolution || 'Unknown'}</p>
+                                <p>Data Transferred: {formatBytes(callStats.bytesTransferred)}</p>
+                                <p>Claim Number: {claimNumber || 'Not provided'}</p>
+                            </div>
+                        </div>
+                        
+                        <div className="settings-section">
+                            <h4>Available Devices</h4>
+                            {availableDevices.cameras.length > 0 ? (
+                                <>
+                                    <label>Cameras:</label>
+                                    <select className="device-select">
+                                        {availableDevices.cameras.map(camera => (
+                                            <option key={camera.id} value={camera.id}>
+                                                {camera.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </>
+                            ) : (
+                                <p>No cameras detected</p>
+                            )}
+                            
+                            {availableDevices.microphones.length > 0 ? (
+                                <>
+                                    <label>Microphones:</label>
+                                    <select className="device-select">
+                                        {availableDevices.microphones.map(mic => (
+                                            <option key={mic.id} value={mic.id}>
+                                                {mic.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </>
+                            ) : (
+                                <p>No microphones detected</p>
+                            )}
+                        </div>
+                        
+                        <div className="settings-section">
+                            <h4>Media Controls</h4>
+                            <div className="settings-controls">
+                                <button onClick={toggleMute}>
+                                    {isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+                                </button>
+                                <button onClick={toggleVideo}>
+                                    {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
+                                </button>
+                                {role === 'investigator' && (
+                                    <button onClick={toggleCamera}>
+                                        Switch to {isBackCamera ? 'Front' : 'Back'} Camera
+                                    </button>
+                                )}
+                                <button onClick={toggleScreenSharing}>
+                                    {isScreenSharing ? 'Stop Screen Sharing' : 'Start Screen Sharing'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1184,23 +2040,41 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                 </div>
             )}
             
-            {/* Screenshots panel - now only shows actual screenshots */}
-            {messages.some(item => item.type === 'screenshot' || item.url) && (
-                <div className={`screenshots ${role}`}>
-                    {messages
-                        .filter(item => item.type === 'screenshot' || item.url) // Only show screenshots
-                        .map((screenshot, index) => (
-                            <img 
-                                key={index} 
-                                src={screenshot.url} 
-                                alt={`Screenshot ${index + 1}`}
-                                onClick={() => handleScreenshotClick(screenshot)}
-                            />
-                        ))}
+            {/* Screenshots and recordings panel */}
+            {messages.some(item => item.type === 'screenshot' || item.type === 'recording') && (
+                <div className={`media-panel ${role}`}>
+                    <div className="media-panel-header">
+                        <h3>Media</h3>
+                    </div>
+                    <div className="media-items">
+                        {messages
+                            .filter(item => item.type === 'screenshot' || item.type === 'recording')
+                            .map((item, index) => (
+                                <div key={index} className={`media-item ${item.type}`}>
+                                    {item.type === 'screenshot' ? (
+                                        <img 
+                                            src={item.url} 
+                                            alt={`Screenshot ${index + 1}`}
+                                            onClick={() => handleScreenshotClick(item)}
+                                        />
+                                    ) : (
+                                        <div className="recording-item">
+                                            <span>{new Date(item.timestamp).toLocaleTimeString()}</span>
+                                            <a href={item.url} target="_blank" rel="noopener noreferrer">
+                                                <FaDownload /> Recording
+                                            </a>
+                                        </div>
+                                    )}
+                                    <div className="media-timestamp">
+                                        {new Date(item.timestamp).toLocaleTimeString()}
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
                 </div>
             )}
             
-            {/* Screenshot Modal - Shows when a screenshot is clicked */}
+            {/* Screenshot Modal */}
             {selectedScreenshot && (
                 <div className="screenshot-modal" onClick={closeScreenshotModal}>
                     <div className="screenshot-modal-content" onClick={e => e.stopPropagation()}>
@@ -1214,10 +2088,15 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                             {selectedScreenshot.capturedBy && (
                                 <p className="screenshot-author">Captured by: {selectedScreenshot.capturedBy}</p>
                             )}
-                            {selectedScreenshot.azureUrl && (
+                            {selectedScreenshot.s3Url && (
                                 <p className="screenshot-storage">
-                                    <a href={selectedScreenshot.azureUrl} target="_blank" rel="noopener noreferrer">
-                                        View in cloud storage
+                                    <a 
+                                        href={selectedScreenshot.s3Url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="download-link"
+                                    >
+                                        <FaDownload /> Download full resolution
                                     </a>
                                 </p>
                             )}

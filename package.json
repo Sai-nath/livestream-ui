@@ -10,10 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
+    "@aws-sdk/credential-providers": "^3.750.0",
+    "@aws-sdk/s3-request-presigner": "^3.750.0",
     "@azure/storage-blob": "^12.26.0",
     "@react-google-maps/api": "^2.20.6",
     "@tailwindcss/forms": "^0.5.7",
     "autoprefixer": "^10.4.17",
+    "aws-sdk": "^2.1692.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.4.3",
     "lucide-react": "^0.475.0",

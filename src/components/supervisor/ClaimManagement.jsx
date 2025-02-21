@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FaClock, FaUserCheck, FaFileAlt, FaCheckCircle, FaUserPlus } from 'react-icons/fa';
 import CreateClaimForm from './CreateClaimForm';
 import AssignInvestigatorModal from './AssignInvestigatorModal';
-import IncomingCallModal from './IncomingCallModal'; // Import IncomingCallModal
-import VideoCall from '../common/VideoCall'; // Import VideoCall
+import IncomingCallModal from './IncomingCallModal';
+import VideoCall from '../common/VideoCall';
 import './ClaimManagement.css';
 
 const ClaimManagement = () => {
@@ -17,10 +17,10 @@ const ClaimManagement = () => {
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [selectedClaim, setSelectedClaim] = useState(null);
     const [showAssignModal, setShowAssignModal] = useState(false);
-    const [incomingCall, setIncomingCall] = useState(null); // Add incomingCall state
-    const [activeCall, setActiveCall] = useState(null); // Add activeCall state
-    const [showVideoCall, setShowVideoCall] = useState(false); // Add showVideoCall state
-    const { trackActivity, isConnected, socket } = useSocket(); // Get socket from useSocket
+    const [incomingCall, setIncomingCall] = useState(null);
+    const [activeCall, setActiveCall] = useState(null);
+    const [showVideoCall, setShowVideoCall] = useState(false);
+    const { trackActivity, isConnected, socket } = useSocket();
     const { user } = useAuth();
 
     const tabs = [
@@ -29,6 +29,16 @@ const ClaimManagement = () => {
         { id: 'Submitted', label: 'Submitted', icon: <FaFileAlt /> },
         { id: 'Closed', label: 'Closed', icon: <FaCheckCircle /> }
     ];
+
+    // Utility function to extract claim number
+    const getClaimNumber = (callData) => {
+        if (callData?.claimId) return `CLM-${callData.claimId}`;
+        if (callData?.ClaimId) return `CLM-${callData.ClaimId}`;
+        if (callData?.ClaimNumber) return callData.ClaimNumber;
+        
+        // Fallback to a generated unique identifier
+        return `CLAIM-${Date.now()}`;
+    };
 
     useEffect(() => {
         fetchClaims(activeTab);
@@ -45,7 +55,6 @@ const ClaimManagement = () => {
             socket.on('investigation_call_cancelled', (data) => {
                 if (incomingCall && incomingCall.callId === data.callId) {
                     setIncomingCall(null);
-                    // toast.info('Call cancelled by investigator'); // Commented out toast.info
                 }
             });
 
@@ -145,7 +154,6 @@ const ClaimManagement = () => {
             investigatorId: call.investigatorId
         });
         setIncomingCall(null);
-        // TODO: Initialize WebRTC connection here in next task
     };
 
     const handleRejectCall = (call, reason) => {
@@ -170,87 +178,16 @@ const ClaimManagement = () => {
         setIncomingCall(null);
     };
 
-    const renderClaimsList = () => {
-        if (loading) {
-            return (
-                <div className="loading-state">
-                    <div className="loading-spinner"></div>
-                    <p>Loading claims...</p>
-                </div>
-            );
-        }
-
-        if (error) {
-            return (
-                <div className="error-state">
-                    <p>Error: {error}</p>
-                    <button 
-                        className="retry-btn"
-                        onClick={() => fetchClaims(activeTab)}
-                    >
-                        Retry
-                    </button>
-                </div>
-            );
-        }
-
-        if (!Array.isArray(claims) || claims.length === 0) {
-            return (
-                <div className="empty-state">
-                    <p>No claims found</p>
-                </div>
-            );
-        }
-
-        return (
-            <div className="claims-grid">
-                {claims.map(claim => (
-                    <motion.div
-                        key={claim.ClaimId}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="claim-card"
-                    >
-                        <div className="claim-header">
-                            <h3>{claim.ClaimNumber}</h3>
-                            <span className="status-badge">{claim.ClaimStatus}</span>
-                        </div>
-                        <div className="claim-details">
-                            <div className="detail-row">
-                                <span className="label">Vehicle:</span>
-                                <span className="value">{getVehicleDisplay(claim.VehicleNumber, claim.VehicleType)}</span>
-                            </div>
-                            <div className="detail-row">
-                                <span className="label">Policy:</span>
-                                <span className="value">{claim.PolicyNumber || 'N/A'}</span>
-                            </div>
-                            <div className="detail-row">
-                                <span className="label">Created:</span>
-                                <span className="value">{formatDate(claim.CreatedAt)}</span>
-                            </div>
-                            {claim.SupervisorNotes && (
-                                <div className="claim-notes">
-                                    <span className="label">Notes:</span>
-                                    <p>{claim.SupervisorNotes}</p>
-                                </div>
-                            )}
-                        </div>
-                        {(claim.ClaimStatus === 'New' || claim.ClaimStatus === 'NEW') && (
-                            <button 
-                                className="assign-btn"
-                                onClick={() => handleAssignClick(claim)}
-                            >
-                                <FaUserPlus />
-                                <span>Assign Investigator</span>
-                            </button>
-                        )}
-                    </motion.div>
-                ))}
-            </div>
-        );
-    };
-
+    // Updated VideoCall rendering with claim number
     if (showVideoCall && activeCall) {
+        // Find the claim associated with this call if possible
+        const associatedClaim = claims.find(
+            claim => claim.ClaimId === incomingCall?.claimId || 
+                     claim.claimId === incomingCall?.claimId
+        );
+
+        const claimNumber = getClaimNumber(associatedClaim || incomingCall);
+
         return (
             <div className="video-call-fullscreen">
                 <VideoCall
@@ -258,6 +195,7 @@ const ClaimManagement = () => {
                     callId={activeCall}
                     socket={socket}
                     onEndCall={handleEndCall}
+                    claimNumber={claimNumber}
                 />
             </div>
         );
@@ -297,7 +235,86 @@ const ClaimManagement = () => {
                 ))}
             </div>
 
-            {renderClaimsList()}
+            {/* Claims list rendering logic */}
+            {(() => {
+                if (loading) {
+                    return (
+                        <div className="loading-state">
+                            <div className="loading-spinner"></div>
+                            <p>Loading claims...</p>
+                        </div>
+                    );
+                }
+
+                if (error) {
+                    return (
+                        <div className="error-state">
+                            <p>Error: {error}</p>
+                            <button 
+                                className="retry-btn"
+                                onClick={() => fetchClaims(activeTab)}
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    );
+                }
+
+                if (!Array.isArray(claims) || claims.length === 0) {
+                    return (
+                        <div className="empty-state">
+                            <p>No claims found</p>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="claims-grid">
+                        {claims.map(claim => (
+                            <motion.div
+                                key={claim.ClaimId}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="claim-card"
+                            >
+                                <div className="claim-header">
+                                    <h3>{claim.ClaimNumber}</h3>
+                                    <span className="status-badge">{claim.ClaimStatus}</span>
+                                </div>
+                                <div className="claim-details">
+                                    <div className="detail-row">
+                                        <span className="label">Vehicle:</span>
+                                        <span className="value">{getVehicleDisplay(claim.VehicleNumber, claim.VehicleType)}</span>
+                                    </div>
+                                    <div className="detail-row">
+                                        <span className="label">Policy:</span>
+                                        <span className="value">{claim.PolicyNumber || 'N/A'}</span>
+                                    </div>
+                                    <div className="detail-row">
+                                        <span className="label">Created:</span>
+                                        <span className="value">{formatDate(claim.CreatedAt)}</span>
+                                    </div>
+                                    {claim.SupervisorNotes && (
+                                        <div className="claim-notes">
+                                            <span className="label">Notes:</span>
+                                            <p>{claim.SupervisorNotes}</p>
+                                        </div>
+                                    )}
+                                </div>
+                                {(claim.ClaimStatus === 'New' || claim.ClaimStatus === 'NEW') && (
+                                    <button 
+                                        className="assign-btn"
+                                        onClick={() => handleAssignClick(claim)}
+                                    >
+                                        <FaUserPlus />
+                                        <span>Assign Investigator</span>
+                                    </button>
+                                )}
+                            </motion.div>
+                        ))}
+                    </div>
+                );
+            })()}
 
             {showCreateForm && (
                 <CreateClaimForm 
@@ -324,7 +341,20 @@ const ClaimManagement = () => {
             {incomingCall && !showVideoCall && (
                 <IncomingCallModal
                     call={incomingCall}
-                    onAccept={handleAcceptCall}
+                    onAccept={(call) => {
+                        // Enhanced accept logic
+                        const claimNumber = getClaimNumber(call);
+                        
+                        // Emit accept with additional context
+                        socket.emit('accept_investigation_call', {
+                            callId: call.callId,
+                            claimId: call.claimId,
+                            claimNumber: claimNumber,
+                            investigatorId: call.investigatorId
+                        });
+                        
+                        setIncomingCall(null);
+                    }}
                     onReject={handleRejectCall}
                     onClose={handleCloseCall}
                     socket={socket}
