@@ -2320,4 +2320,4 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
 };
 
 export default VideoCall;
-           {
+           
