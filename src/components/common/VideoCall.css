@@ -29,6 +29,22 @@
     object-fit: cover;
 }
 
+/* Button label styles */
+.button-label {
+    display: block;
+    font-size: 10px;
+    margin-top: 2px;
+}
+
+.video-controls-mobile button,
+.video-controls-web button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+}
+
 /* PiP container and videos */
 .pip-container {
     position: absolute;
@@ -174,7 +190,8 @@
 .video-large-stream {
     width: 100%;
     height: 100%;
-    object-fit: contain; /* Prevent stretching */
+    object-fit: contain;
+    /* Prevent stretching */
 }
 
 .side-panel {
@@ -343,8 +360,13 @@ button.end-call svg {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .screenshot-modal-content {
@@ -359,8 +381,13 @@ button.end-call svg {
 }
 
 @keyframes scaleIn {
-    from { transform: scale(0.9); }
-    to { transform: scale(1); }
+    from {
+        transform: scale(0.9);
+    }
+
+    to {
+        transform: scale(1);
+    }
 }
 
 .screenshot-modal-content img {
@@ -399,7 +426,7 @@ button.end-call svg {
     color: white;
 }
 
-.screenshot-timestamp, 
+.screenshot-timestamp,
 .screenshot-location {
     margin: 5px 0;
     font-size: 14px;
@@ -433,17 +460,17 @@ button.end-call svg {
         width: 160px;
         height: 120px;
     }
-    
+
     .screenshot-modal-content {
         max-width: 95%;
     }
-    
+
     .video-controls-mobile button,
     .video-controls-web button {
         width: 42px;
         height: 42px;
     }
-    
+
     .video-controls-mobile button svg,
     .video-controls-web button svg {
         width: 18px;
@@ -458,12 +485,14 @@ button.end-call svg {
     }
 
     .video-preview {
-        height: 70vh; /* Slightly smaller on mobile for better fit */
+        height: 70vh;
+        /* Slightly smaller on mobile for better fit */
         border-radius: 8px;
     }
 
     .video-supervisor {
-        height: 20vh; /* Slightly larger on mobile for better visibility */
+        height: 20vh;
+        /* Slightly larger on mobile for better visibility */
     }
 
     .video-controls-mobile {
@@ -476,12 +505,12 @@ button.end-call svg {
         height: 40px;
         font-size: 16px;
     }
-    
+
     .screenshot-info {
         padding: 10px;
     }
-    
-    .screenshot-timestamp, 
+
+    .screenshot-timestamp,
     .screenshot-location {
         font-size: 12px;
     }
@@ -666,11 +695,13 @@ video {
 
 /* Only mirror front-facing camera for preview */
 .video-fullscreen-stream {
-    transform: scaleX(1); /* No mirroring by default (back camera) */
+    transform: scaleX(1);
+    /* No mirroring by default (back camera) */
 }
 
 .mirror-video {
-    transform: scaleX(-1); /* Mirror front camera */
+    transform: scaleX(-1);
+    /* Mirror front camera */
 }
 
 /* Notification Badge */
@@ -703,9 +734,11 @@ button.has-notification {
     0% {
         transform: scale(1);
     }
+
     50% {
         transform: scale(1.2);
     }
+
     100% {
         transform: scale(1);
     }
@@ -727,9 +760,11 @@ button.recording {
     0% {
         box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
     }
+
     70% {
         box-shadow: 0 0 0 10px rgba(255, 59, 48, 0);
     }
+
     100% {
         box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
     }
@@ -761,14 +796,29 @@ button.recording {
 }
 
 @keyframes blink {
-    0% { opacity: 1; }
-    50% { opacity: 0.3; }
-    100% { opacity: 1; }
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+
+    100% {
+        opacity: 1;
+    }
 }
 
 @keyframes fade-in {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Upload progress bar */
@@ -909,8 +959,13 @@ button.settings-button:hover svg {
 }
 
 @keyframes rotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Screen sharing button */
@@ -1142,11 +1197,12 @@ button.active svg {
 
 /* Fix for iOS Safari */
 @supports (-webkit-touch-callout: none) {
+
     .video-controls-mobile button,
     .video-controls-web button {
         padding: 0;
     }
-    
+
     .video-controls-mobile button svg,
     .video-controls-web button svg {
         margin: auto;
