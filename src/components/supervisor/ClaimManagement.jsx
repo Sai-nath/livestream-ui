@@ -2,12 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useSocket } from '../../contexts/SocketContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaClock, FaUserCheck, FaFileAlt, FaCheckCircle, FaUserPlus } from 'react-icons/fa';
+import { FaClock, FaUserCheck, FaFileAlt, FaCheckCircle, FaUserPlus, FaPlus } from 'react-icons/fa';
 import CreateClaimForm from './CreateClaimForm';
 import AssignInvestigatorModal from './AssignInvestigatorModal';
 import IncomingCallModal from './IncomingCallModal';
 import VideoCall from '../common/VideoCall';
-import './ClaimManagement.css';
 
 const ClaimManagement = () => {
     const [claims, setClaims] = useState([]);
@@ -30,13 +29,10 @@ const ClaimManagement = () => {
         { id: 'Closed', label: 'Closed', icon: <FaCheckCircle /> }
     ];
 
-    // Utility function to extract claim number
     const getClaimNumber = (callData) => {
         if (callData?.claimId) return `CLM-${callData.claimId}`;
         if (callData?.ClaimId) return `CLM-${callData.ClaimId}`;
         if (callData?.ClaimNumber) return callData.ClaimNumber;
-        
-        // Fallback to a generated unique identifier
         return `CLAIM-${Date.now()}`;
     };
 
@@ -46,25 +42,21 @@ const ClaimManagement = () => {
 
     useEffect(() => {
         if (socket) {
-            // Listen for incoming investigation calls
             socket.on('incoming_investigation_call', (callData) => {
                 setIncomingCall(callData);
             });
 
-            // Listen for call cancellations
             socket.on('investigation_call_cancelled', (data) => {
                 if (incomingCall && incomingCall.callId === data.callId) {
                     setIncomingCall(null);
                 }
             });
 
-            // Listen for call accepted
             socket.on('investigation_call_accepted', (data) => {
                 setActiveCall(data.callId);
                 setShowVideoCall(true);
             });
 
-            // Listen for call ended
             socket.on('call_ended', () => {
                 setShowVideoCall(false);
                 setActiveCall(null);
@@ -97,8 +89,6 @@ const ClaimManagement = () => {
             }
 
             const data = await response.json();
-            
-            // Ensure data is an array
             const claimsArray = Array.isArray(data) ? data : [];
             setClaims(claimsArray);
             
@@ -120,7 +110,6 @@ const ClaimManagement = () => {
     };
 
     const handleAssignComplete = (updatedClaim) => {
-        // Update the claims list with the newly assigned claim
         setClaims(prevClaims => 
             prevClaims.map(claim => 
                 claim.ClaimId === updatedClaim.ClaimId ? updatedClaim : claim
@@ -145,6 +134,18 @@ const ClaimManagement = () => {
     const getVehicleDisplay = (vehicleNumber, vehicleType) => {
         if (!vehicleNumber && !vehicleType) return 'N/A';
         return vehicleType ? `${vehicleNumber} (${vehicleType})` : vehicleNumber;
+    };
+
+    const getStatusBadgeClass = (status) => {
+        if (!status) return '';
+        
+        const normalizedStatus = status.toLowerCase();
+        if (normalizedStatus === 'new') return 'new';
+        if (normalizedStatus === 'assigned') return 'assigned';
+        if (normalizedStatus === 'submitted') return 'submitted';
+        if (normalizedStatus === 'closed') return 'closed';
+        
+        return '';
     };
 
     const handleAcceptCall = (call) => {
@@ -178,14 +179,11 @@ const ClaimManagement = () => {
         setIncomingCall(null);
     };
 
-    // Updated VideoCall rendering with claim number
     if (showVideoCall && activeCall) {
-        // Find the claim associated with this call if possible
         const associatedClaim = claims.find(
             claim => claim.ClaimId === incomingCall?.claimId || 
-                     claim.claimId === incomingCall?.claimId
+                    claim.claimId === incomingCall?.claimId
         );
-
         const claimNumber = getClaimNumber(associatedClaim || incomingCall);
 
         return (
@@ -203,119 +201,137 @@ const ClaimManagement = () => {
 
     return (
         <div className="claims-container">
-            <div className="claims-header">
-                <h1>Claims Management</h1>
-                <button 
-                    className="create-claim-btn"
-                    onClick={() => setShowCreateForm(true)}
-                >
-                    Create New Claim
-                </button>
-                <div className="connection-status">
-                    <span className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`}></span>
-                    {isConnected ? 'Connected' : 'Disconnected'}
+            {/* Page Header with Title and Actions */}
+            <div className="claims-page-header">
+                <h1>iNube Live Streaming</h1>
+                <div className="header-actions">
+                    <button 
+                        className="create-claim-btn"
+                        onClick={() => setShowCreateForm(true)}
+                    >
+                        <FaPlus size={14} />
+                        <span>Create New Claim</span>
+                    </button>
+                    <div className="connection-status">
+                        <span className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`}></span>
+                        {isConnected ? 'Connected' : 'Disconnected'}
+                    </div>
+                </div>
+            </div>
+            
+            {/* Tabs Navigation */}
+            <div className="dashboard-tabs">
+                <div className="claims-tabs">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`tab ${activeTab === tab.id ? 'active' : ''}`}
+                        >
+                            {tab.icon}
+                            <span>{tab.label}</span>
+                            {!loading && claims.length > 0 && (
+                                <span className={`count ${activeTab === tab.id ? 'active' : ''}`}>
+                                    {claims.length}
+                                </span>
+                            )}
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            <div className="claims-tabs">
-                {tabs.map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`tab ${activeTab === tab.id ? 'active' : ''}`}
-                    >
-                        {tab.icon}
-                        <span>{tab.label}</span>
-                        {!loading && claims.length > 0 && (
-                            <span className={`count ${activeTab === tab.id ? 'active' : ''}`}>
-                                {claims.length}
-                            </span>
-                        )}
-                    </button>
-                ))}
+            {/* Claims Content */}
+            <div className="claims-content">
+                {(() => {
+                    if (loading) {
+                        return (
+                            <div className="loading-state">
+                                <div className="loading-spinner"></div>
+                                <p>Loading claims...</p>
+                            </div>
+                        );
+                    }
+
+                    if (error) {
+                        return (
+                            <div className="error-state">
+                                <p>Error: {error}</p>
+                                <button 
+                                    className="retry-btn"
+                                    onClick={() => fetchClaims(activeTab)}
+                                >
+                                    Retry
+                                </button>
+                            </div>
+                        );
+                    }
+
+                    if (!Array.isArray(claims) || claims.length === 0) {
+                        return (
+                            <div className="empty-state">
+                                <p>No {activeTab.toLowerCase()} claims found</p>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div className="claims-grid">
+                            <AnimatePresence>
+                                {claims.map(claim => (
+                                    <motion.div
+                                        key={claim.ClaimId}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -20 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="claim-card"
+                                    >
+                                        <div className="claim-header">
+                                            <h3>{claim.ClaimNumber}</h3>
+                                            <span className={`status-badge ${getStatusBadgeClass(claim.ClaimStatus)}`}>
+                                                {claim.ClaimStatus}
+                                            </span>
+                                        </div>
+                                        <div className="claim-details">
+                                            <div className="detail-row">
+                                                <span className="label">Vehicle:</span>
+                                                <span className="value">{getVehicleDisplay(claim.VehicleNumber, claim.VehicleType)}</span>
+                                            </div>
+                                            <div className="detail-row">
+                                                <span className="label">Policy:</span>
+                                                <span className="value">{claim.PolicyNumber || 'N/A'}</span>
+                                            </div>
+                                            <div className="detail-row">
+                                                <span className="label">Created:</span>
+                                                <span className="value">{formatDate(claim.CreatedAt)}</span>
+                                            </div>
+                                            {claim.SupervisorNotes && (
+                                                <div className="claim-notes">
+                                                    <span className="label">Notes:</span>
+                                                    <p>{claim.SupervisorNotes}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {(claim.ClaimStatus === 'New' || claim.ClaimStatus === 'NEW') && (
+                                            <div className="claim-actions">
+                                                <button 
+                                                    className="assign-btn"
+                                                    onClick={() => handleAssignClick(claim)}
+                                                >
+                                                    <FaUserPlus size={14} />
+                                                    <span>Assign Investigator</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    );
+                })()}
             </div>
 
-            {/* Claims list rendering logic */}
-            {(() => {
-                if (loading) {
-                    return (
-                        <div className="loading-state">
-                            <div className="loading-spinner"></div>
-                            <p>Loading claims...</p>
-                        </div>
-                    );
-                }
-
-                if (error) {
-                    return (
-                        <div className="error-state">
-                            <p>Error: {error}</p>
-                            <button 
-                                className="retry-btn"
-                                onClick={() => fetchClaims(activeTab)}
-                            >
-                                Retry
-                            </button>
-                        </div>
-                    );
-                }
-
-                if (!Array.isArray(claims) || claims.length === 0) {
-                    return (
-                        <div className="empty-state">
-                            <p>No claims found</p>
-                        </div>
-                    );
-                }
-
-                return (
-                    <div className="claims-grid">
-                        {claims.map(claim => (
-                            <motion.div
-                                key={claim.ClaimId}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="claim-card"
-                            >
-                                <div className="claim-header">
-                                    <h3>{claim.ClaimNumber}</h3>
-                                    <span className="status-badge">{claim.ClaimStatus}</span>
-                                </div>
-                                <div className="claim-details">
-                                    <div className="detail-row">
-                                        <span className="label">Vehicle:</span>
-                                        <span className="value">{getVehicleDisplay(claim.VehicleNumber, claim.VehicleType)}</span>
-                                    </div>
-                                    <div className="detail-row">
-                                        <span className="label">Policy:</span>
-                                        <span className="value">{claim.PolicyNumber || 'N/A'}</span>
-                                    </div>
-                                    <div className="detail-row">
-                                        <span className="label">Created:</span>
-                                        <span className="value">{formatDate(claim.CreatedAt)}</span>
-                                    </div>
-                                    {claim.SupervisorNotes && (
-                                        <div className="claim-notes">
-                                            <span className="label">Notes:</span>
-                                            <p>{claim.SupervisorNotes}</p>
-                                        </div>
-                                    )}
-                                </div>
-                                {(claim.ClaimStatus === 'New' || claim.ClaimStatus === 'NEW') && (
-                                    <button 
-                                        className="assign-btn"
-                                        onClick={() => handleAssignClick(claim)}
-                                    >
-                                        <FaUserPlus />
-                                        <span>Assign Investigator</span>
-                                    </button>
-                                )}
-                            </motion.div>
-                        ))}
-                    </div>
-                );
-            })()}
-
+            {/* Modals */}
             {showCreateForm && (
                 <CreateClaimForm 
                     onClose={() => setShowCreateForm(false)}
@@ -342,17 +358,13 @@ const ClaimManagement = () => {
                 <IncomingCallModal
                     call={incomingCall}
                     onAccept={(call) => {
-                        // Enhanced accept logic
                         const claimNumber = getClaimNumber(call);
-                        
-                        // Emit accept with additional context
                         socket.emit('accept_investigation_call', {
                             callId: call.callId,
                             claimId: call.claimId,
                             claimNumber: claimNumber,
                             investigatorId: call.investigatorId
                         });
-                        
                         setIncomingCall(null);
                     }}
                     onReject={handleRejectCall}

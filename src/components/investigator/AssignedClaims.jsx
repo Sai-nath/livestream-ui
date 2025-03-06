@@ -189,47 +189,22 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
                     'Authorization': `Bearer ${user.token}`
                 }
             });
-
+    
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.message || 'Failed to fetch claims');
             }
-
-            let data = await response.json();
-            console.log('Fetched claims:', data);
-            
-            // The API is returning formatted data but with empty vehicleInfo
-            // Let's check and update the structure if needed
-            if (data.length > 0 && data[0].vehicleInfo && Object.keys(data[0].vehicleInfo).length === 0) {
-                // Map SQL query data into the expected structure
-                data = data.map(claim => {
-                    // Keep existing structured data
-                    const updatedClaim = {...claim};
-                    
-                    // If we have SQL query raw data, use it to populate vehicleInfo
-                    if (claim.VehicleNumber || claim.VehicleType) {
-                        updatedClaim.vehicleInfo = {
-                            make: claim.VehicleType?.split(' ')[0] || '',
-                            model: claim.VehicleType?.split(' ').slice(1).join(' ') || '',
-                            registrationNumber: claim.VehicleNumber || ''
-                        };
-                    }
-                    
-                    // If we have SQL query raw data, use it to populate claimDetails
-                    if (claim.PolicyNumber || claim.InsuredName) {
-                        updatedClaim.claimDetails = {
-                            policyNumber: claim.PolicyNumber || '',
-                            insuredName: claim.InsuredName || '',
-                            ...updatedClaim.claimDetails
-                        };
-                    }
-                    
-                    return updatedClaim;
-                });
-            }
-            
-            setClaims(data);
-            setFilteredClaims(data);
+    
+            const data = await response.json();
+            console.log('Fetched claims from API:', JSON.stringify(data, null, 2));
+    
+            // Sort by assignedAt descending (most recent first) until ClaimNumber is available
+            const sortedData = data.sort((a, b) => {
+                return new Date(b.assignedAt) - new Date(a.assignedAt);
+            });
+    
+            setClaims(sortedData);
+            setFilteredClaims(sortedData);
         } catch (error) {
             console.error('Fetch error:', error);
             setError(error.message);
@@ -239,9 +214,15 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
         }
     };
 
+    const getClaimNumber = (callData) => {
+        console.log('callData:', callData); // Log the callData for debugging
+        if (!callData) return null; // If no data provided, return null
+        return callData.ClaimNumber || `CLAIM-${Date.now()}`; // Fallback if ClaimNumber is not available
+    };
+
     if (showVideoCall && activeCall && currentClaimData) {
         console.log('Rendering video call interface');
-        const claimNumber = currentClaimData.claimId ? `CLM-${currentClaimData.claimId}` : `CLAIM-${currentClaimData.id}`;
+        const claimNumber = getClaimNumber(currentClaimData);
         return (
             <div className="video-call-fullscreen">
                 <VideoCall
