@@ -19,23 +19,44 @@ const Login = () => {
         setIsSubmitting(true);
 
         try {
-            console.debug('Attempting login with email:', email);
+            const apiUrl = `${API_URL}${ENDPOINTS.AUTH.LOGIN}`;
+            console.log('Attempting to connect to:', apiUrl);
+            console.log('Login payload:', { email }); // Log payload (excluding password)
             
-            const response = await fetch(`${API_URL}${ENDPOINTS.AUTH.LOGIN}`, {
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({ email, password }),
-                credentials: 'include'
+                credentials: 'include',
+                mode: 'cors'
             });
 
+            console.log('Response status:', response.status); // Log response status
+            const responseText = await response.text(); // Get raw response text
+            console.log('Raw response:', responseText); // Log raw response
+
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to login');
+                let errorMessage = 'Failed to login';
+                try {
+                    const errorData = JSON.parse(responseText);
+                    errorMessage = errorData.message || errorMessage;
+                } catch (e) {
+                    errorMessage = `Server error: ${responseText || response.status}`;
+                }
+                throw new Error(errorMessage);
             }
 
-            const data = await response.json();
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (e) {
+                console.error('Failed to parse response:', e);
+                throw new Error('Invalid response from server');
+            }
+
             console.debug('Login response:', { 
                 success: true,
                 hasToken: !!data.token,

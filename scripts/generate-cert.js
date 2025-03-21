@@ -15,7 +15,7 @@ const pems = selfsigned.generate(attrs, {
         name: 'subjectAltName',
         altNames: [
             { type: 2, value: 'localhost' },
-            { type: 2, value: '192.168.8.120' }
+            { type: 2, value: '192.168.8.150' }
         ]
     }]
 });

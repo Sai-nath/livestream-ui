@@ -7,7 +7,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true,
+    host: '192.168.8.150',  // Frontend IP
     port: 3000,
     https: {
       key: fs.readFileSync('.cert/key.pem'),
@@ -15,20 +15,17 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: process.env.NODE_ENV === 'production' 
-          ? 'https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net'
-          : 'http://192.168.8.120:5000',
+        target: 'http://192.168.8.150:5000',  // Backend server IP
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path
       },
       '/socket.io': {
-        target: process.env.NODE_ENV === 'production'
-          ? 'https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net'
-          : 'http://192.168.8.120:5000',
+        target: 'http://192.168.8.150:5000',  // Backend server IP
         changeOrigin: true,
         secure: false,
-        ws: true,
-      },
-    },
-  },
+        ws: true
+      }
+    }
+  }
 })

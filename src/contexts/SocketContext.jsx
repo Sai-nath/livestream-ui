@@ -60,18 +60,45 @@ export const SocketProvider = ({ children }) => {
       reconnectionDelayMax: 5000,
       timeout: 10000,
       transports: ['websocket', 'polling'],
-      withCredentials: true,
+      withCredentials: false,
       path: '/socket.io',
       autoConnect: true,
       forceNew: true
     });
 
+    // Enhanced socket connection logging
+    console.log(`Socket Connection Details:`, {
+      baseUrl: getBaseUrl(),
+      fullUri: socketInstance.io.uri,
+      transport: socketInstance.io.engine?.transport?.name || 'initializing',
+      authToken: user.token ? 'Present' : 'Missing',
+      userId: user.id,
+      networkIP: '192.168.8.150'
+    });
+
+    // Connection event logging
+    socketInstance.io.engine.on('open', () => {
+      console.log('Socket Engine Opened:', {
+        url: socketInstance.io.uri,
+        transport: socketInstance.io.engine.transport.name
+      });
+    });
+
+    socketInstance.io.engine.on('close', (reason) => {
+      console.log('Socket Engine Closed:', {
+        reason: reason,
+        url: socketInstance.io.uri
+      });
+    });
+
+    console.log(`Socket URL: ${socketInstance.io.uri}`);
     // Connection events
     socketInstance.on('connect', () => {
       logWithTimestamp(`Socket connected successfully`, {
         socketId: socketInstance.id,
         userId: user.id,
-        role: user.role
+        role: user.role,
+        connectionUrl: socketInstance.io.uri
       });
       setIsConnected(true);
       setReconnectAttempts(0);
@@ -140,7 +167,7 @@ export const SocketProvider = ({ children }) => {
 
     // Keep-alive ping
     const pingInterval = setInterval(() => {
-      if (socketInstance && isConnected) {
+      if (socketInstance && socketInstance.connected) {
         socketInstance.emit('ping');
       }
     }, 30000);
@@ -201,51 +228,145 @@ export const SocketProvider = ({ children }) => {
       'STREAM_ENDED',
       'CLAIM_CREATED',
       'CLAIM_ASSIGNED',
-      'CLAIM_STATUS_CHANGED'
+      'CLAIM_STATUS_CHANGED',
+      'CLAIMS_FETCHED'
     ];
 
-    if (socket && isConnected && importantActivities.includes(action)) {
-      logWithTimestamp('Tracking important activity', { action, details });
+    // Check if socket exists and is connected
+    const socketConnected = socket && socket.connected;
+    
+    if (socketConnected && importantActivities.includes(action)) {
+      logWithTimestamp('Tracking activity', { 
+        action, 
+        details,
+        socketId: socket.id,
+        networkIP: '192.168.8.150' // Using the known network IP
+      });
       socket.emit('activity', { type: action, content: details });
-    } else if (!socket || !isConnected) {
-      logWithTimestamp('Cannot track activity - socket not connected', { action, details });
+    } else if (!socketConnected) {
+      // Queue activity for when connection is restored
+      logWithTimestamp('Socket not connected for activity tracking', { 
+        action, 
+        details,
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        networkIP: '192.168.8.150'
+      });
+      
+      // If socket exists but is disconnected, set up a one-time handler for reconnection
+      if (socket) {
+        const onReconnect = () => {
+          logWithTimestamp('Sending queued activity after reconnection', { action, details });
+          socket.emit('activity', { type: action, content: details });
+          socket.off('connect', onReconnect);
+        };
+        
+        socket.once('connect', onReconnect);
+      }
     }
-  }, [socket, isConnected]);
+  }, [socket]);
 
   const joinStream = useCallback((streamId) => {
-    if (socket && isConnected) {
-      logWithTimestamp('Joining stream', { streamId });
+    const socketConnected = socket && socket.connected;
+    
+    if (socketConnected) {
+      logWithTimestamp('Joining stream', { 
+        streamId,
+        socketId: socket.id,
+        networkIP: '192.168.8.150' // Using the known network IP
+      });
       socket.emit('stream:join', { streamId });
+    } else {
+      logWithTimestamp('Cannot join stream - socket not connected', { 
+        streamId,
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        networkIP: '192.168.8.150'
+      });
     }
-  }, [socket, isConnected]);
+  }, [socket]);
 
   const leaveStream = useCallback((streamId) => {
-    if (socket && isConnected) {
-      logWithTimestamp('Leaving stream', { streamId });
+    const socketConnected = socket && socket.connected;
+    
+    if (socketConnected) {
+      logWithTimestamp('Leaving stream', { 
+        streamId,
+        socketId: socket.id,
+        networkIP: '192.168.8.150'
+      });
       socket.emit('stream:leave', { streamId });
+    } else {
+      logWithTimestamp('Cannot leave stream - socket not connected', { 
+        streamId,
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        networkIP: '192.168.8.150'
+      });
     }
-  }, [socket, isConnected]);
+  }, [socket]);
 
   const startStream = useCallback((streamDetails) => {
-    if (socket && isConnected) {
-      logWithTimestamp('Starting stream', streamDetails);
+    const socketConnected = socket && socket.connected;
+    
+    if (socketConnected) {
+      logWithTimestamp('Starting stream', {
+        ...streamDetails,
+        socketId: socket.id,
+        networkIP: '192.168.8.150'
+      });
       socket.emit('stream:start', streamDetails);
+    } else {
+      logWithTimestamp('Cannot start stream - socket not connected', { 
+        streamDetails,
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        networkIP: '192.168.8.150'
+      });
     }
-  }, [socket, isConnected]);
+  }, [socket]);
 
   const endStream = useCallback((streamId) => {
-    if (socket && isConnected) {
-      logWithTimestamp('Ending stream', { streamId });
+    const socketConnected = socket && socket.connected;
+    
+    if (socketConnected) {
+      logWithTimestamp('Ending stream', { 
+        streamId,
+        socketId: socket.id,
+        networkIP: '192.168.8.150'
+      });
       socket.emit('stream:end', { streamId });
+    } else {
+      logWithTimestamp('Cannot end stream - socket not connected', { 
+        streamId,
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        networkIP: '192.168.8.150'
+      });
     }
-  }, [socket, isConnected]);
+  }, [socket]);
 
   const sendStreamMessage = useCallback((streamId, message) => {
-    if (socket && isConnected) {
-      logWithTimestamp('Sending stream message', { streamId, message });
+    const socketConnected = socket && socket.connected;
+    
+    if (socketConnected) {
+      logWithTimestamp('Sending stream message', { 
+        streamId, 
+        message,
+        socketId: socket.id,
+        networkIP: '192.168.8.150'
+      });
       socket.emit('stream:message', { streamId, message });
+    } else {
+      logWithTimestamp('Cannot send stream message - socket not connected', { 
+        streamId,
+        messageLength: message?.length,
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        networkIP: '192.168.8.150'
+      });
     }
-  }, [socket, isConnected]);
+  }, [socket]);
 
   const value = {
     socket,

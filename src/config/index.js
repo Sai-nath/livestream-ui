@@ -1,10 +1,7 @@
 // API Configuration
 const getBaseUrl = () => {
-    const networkUrl = import.meta.env.VITE_API_URL;
-    const allowLocal = import.meta.env.VITE_ALLOW_LOCAL === 'true';
-    const isLocalhost = window.location.hostname === 'localhost';
-    
-    return isLocalhost && allowLocal ? 'http://localhost:5000' : networkUrl;
+    // Using relative path to let Vite proxy handle the requests
+    return '';
 };
 
 export const API_URL = getBaseUrl();
