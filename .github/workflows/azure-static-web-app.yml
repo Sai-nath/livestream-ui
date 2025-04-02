@@ -1,62 +1,71 @@
-name: Azure Static Web App CI/CD
+name: Azure Static Web Apps CI/CD
 
 on:
   push:
     branches:
       - master
-      - main
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
       - master
-      - main
-  workflow_dispatch:
 
 jobs:
   build_and_deploy_job:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
-    name: Build and Deploy
+    name: Build and Deploy Job
+    permissions:
+       id-token: write
+       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           submodules: true
           lfs: false
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '18.x'
           cache: 'npm'
-
-      - name: Create production environment file
-        run: |
-          echo "# Server Configuration" > .env.production
-          echo "VITE_API_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env.production
-          echo "VITE_SOCKET_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env.production
-          echo "VITE_AZURE_STORAGE_ACCOUNT=livestreamingfiles" >> .env.production
-          echo "VITE_AZURE_CONTAINER_NAME=claims-documents" >> .env.production
-          echo "VITE_AZURE_SAS_TOKEN=${{ secrets.AZURE_SAS_TOKEN }}" >> .env.production
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Set environment variables
+        run: |
+          echo "Setting production environment"
+          cp .env.production .env
+          echo "VITE_API_URL=https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net" >> .env
+          echo "VITE_SOCKET_URL=wss://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net" >> .env
+          echo "VITE_APP_URL=https://nice-sea-057f1c900.4.azurestaticapps.net" >> .env
+          echo "NODE_ENV=production" >> .env
       - name: Build
-        run: npm run build
-        env:
-          NODE_ENV: production
+        run: |
+          npm run build
+          mv dist build
+      - name: Install OIDC Client from Core Package
+        run: npm install @actions/core@1.6.0 @actions/http-client
 
-      - name: Deploy
+      - name: Get Id Token
+        uses: actions/github-script@v6
+        id: idtoken
+        with:
+           script: |
+               const coredemo = require('@actions/core')
+               return await coredemo.getIDToken()
+           result-encoding: string
+
+      - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: baec9e9f7031b1d39d99ad7dd0b1e16c5c9c065e97f242572d9ecd5016dd52a904-fa6e65eb-cb77-459b-9a13-09c862858bc60002403057f1c900
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_SEA_057F1C900 }}
           action: "upload"
-          app_location: "/"
-          api_location: ""
-          output_location: "dist"
-          skip_app_build: true # We already built the app in the previous step
+          app_location: "/" # App source code path
+          api_location: "" # Api source code path - optional
+          output_location: "build" # Built app content directory
+          github_id_token: ${{ steps.idtoken.outputs.result }}
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
@@ -67,5 +76,5 @@ jobs:
         id: closepullrequest
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: baec9e9f7031b1d39d99ad7dd0b1e16c5c9c065e97f242572d9ecd5016dd52a904-fa6e65eb-cb77-459b-9a13-09c862858bc60002403057f1c900
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_SEA_057F1C900 }}
           action: "close"
