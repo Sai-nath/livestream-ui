@@ -1,0 +1,69 @@
+name: Azure Static Web App CI/CD
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Create production environment file
+        run: |
+          echo "# Server Configuration" > .env.production
+          echo "VITE_API_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env.production
+          echo "VITE_SOCKET_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env.production
+          echo "VITE_AZURE_STORAGE_ACCOUNT=livestreamingfiles" >> .env.production
+          echo "VITE_AZURE_CONTAINER_NAME=claims-documents" >> .env.production
+          echo "VITE_AZURE_SAS_TOKEN=${{ secrets.AZURE_SAS_TOKEN }}" >> .env.production
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: 079acd6e2525938f85b7030327e14a15dbcceca8b17e4c3b46a92e41e61f0a2704-86449834-e317-4709-ba6b-d4ed9521a8180002403057f1c900
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"
+          api_location: ""
+          output_location: "dist"
+          skip_app_build: true # We already built the app in the previous step
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: 079acd6e2525938f85b7030327e14a15dbcceca8b17e4c3b46a92e41e61f0a2704-86449834-e317-4709-ba6b-d4ed9521a8180002403057f1c900
+          action: "close"
