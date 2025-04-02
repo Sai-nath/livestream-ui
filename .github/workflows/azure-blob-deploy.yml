@@ -1,0 +1,75 @@
+name: Azure Blob Storage Deployment
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Create production environment file
+      run: |
+        echo "# Server Configuration" > .env.production
+        echo "VITE_API_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env.production
+        echo "VITE_SOCKET_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env.production
+        echo "VITE_AZURE_STORAGE_ACCOUNT=livestreamingfiles" >> .env.production
+        echo "VITE_AZURE_CONTAINER_NAME=claims-documents" >> .env.production
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build
+      run: npm run build
+      env:
+        NODE_ENV: production
+        
+    - name: Deploy to Azure Blob Storage
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          # Create storage account if it doesn't exist
+          az storage account create --name livestreamingui --resource-group LiveStreamingRG --location centralindia --sku Standard_LRS --kind StorageV2 --https-only true --allow-blob-public-access true || echo "Storage account already exists"
+          
+          # Create container if it doesn't exist
+          az storage container create --name '$web' --account-name livestreamingui --public-access blob || echo "Container already exists"
+          
+          # Upload files to blob storage
+          az storage blob upload-batch --account-name livestreamingui --auth-mode key --destination '$web' --source ./dist --overwrite
+          
+          # Enable static website hosting
+          az storage blob service-properties update --account-name livestreamingui --static-website --index-document index.html --404-document index.html
+          
+          # Get the website URL
+          echo "Website URL: $(az storage account show --name livestreamingui --query 'primaryEndpoints.web' --output tsv)"
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        
+    - name: Purge CDN endpoint
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          # Purge CDN endpoint if it exists
+          az cdn endpoint purge --content-paths '/*' --profile-name LiveStreamingCDN --name livestreamingui --resource-group LiveStreamingRG || echo "CDN endpoint not found or purge failed"
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
