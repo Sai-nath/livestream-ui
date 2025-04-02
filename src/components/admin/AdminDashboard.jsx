@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'react-toastify';
 
-// Admin Dashboard Statistics Component
 const StatCard = ({ title, value, icon: Icon }) => (
     <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between">
