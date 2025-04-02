@@ -220,6 +220,7 @@
 /* Improved Logout Button */
 .nav-footer {
     padding: 1rem;
+    padding-bottom: 5rem; 
     border-top: 1px solid #4a5568;
     background-color: #222a38;
 }
@@ -330,8 +331,8 @@
 /* Quick Logout for Mobile */
 .quick-logout {
     position: fixed;
-    bottom: 70px;
-    right: 10px;
+    bottom: 180px; /* Increased from 130px to move it even higher above the bottom navigation */
+    right: 20px;
     z-index: 39;
     background-color: #e53e3e;
     color: white;

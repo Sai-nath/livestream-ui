@@ -1,0 +1,420 @@
+/* Theme Variables */
+:root {
+  /* Default theme variables (dark theme) */
+  --bg-primary: #1a202c;
+  --bg-secondary: #2d3748;
+  --bg-tertiary: #4a5568;
+  --text-primary: #f7fafc;
+  --text-secondary: #e2e8f0;
+  --text-muted: #a0aec0;
+  --accent-primary: #1e3a8a;
+  --accent-secondary: #3b82f6;
+  --border-color: #4a5568;
+  --card-bg: #2d3748;
+  --input-bg: #4a5568;
+  --input-text: #f7fafc;
+  --button-primary-bg: #1e3a8a;
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #4a5568;
+  --button-secondary-text: #f7fafc;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --info-color: #3b82f6;
+  --header-bg: #1a1a2e;
+  --sidebar-bg: #1a1a2e;
+  --dashboard-bg: #0f172a;
+  
+  /* Additional variables for SupervisorDashboard */
+  --brand-icon-color: #0066ff;
+  --primary-color: #0066ff;
+  --primary-hover-color: #0052cc;
+  --hover-bg: rgba(255, 255, 255, 0.05);
+  --main-content-bg: #0f172a;
+  --claims-header-bg: rgba(15, 23, 42, 0.6);
+  --connection-status-bg: rgba(255, 255, 255, 0.06);
+  --connected-color: #10b981;
+  --disconnected-color: #ef4444;
+  --dashboard-tabs-bg: rgba(15, 23, 42, 0.5);
+  --count-bg: rgba(255, 255, 255, 0.1);
+  --claim-card-bg: rgba(30, 41, 59, 0.5);
+  --claim-header-bg: rgba(15, 23, 42, 0.4);
+  --claim-notes-bg: rgba(15, 23, 42, 0.3);
+  --claim-actions-bg: rgba(15, 23, 42, 0.4);
+  --loading-spinner-bg: rgba(255, 255, 255, 0.1);
+  --primary-hover-bg: rgba(59, 130, 246, 0.1);
+  --video-call-bg: #0f172a;
+  
+  /* Status badge colors */
+  --new-status-bg: rgba(6, 182, 212, 0.2);
+  --new-status-color: #06b6d4;
+  --assigned-status-bg: rgba(249, 115, 22, 0.2);
+  --assigned-status-color: #f97316;
+  --submitted-status-bg: rgba(139, 92, 246, 0.2);
+  --submitted-status-color: #8b5cf6;
+  --closed-status-bg: rgba(34, 197, 94, 0.2);
+  --closed-status-color: #22c55e;
+  
+  /* Additional variables for ClaimManagement */
+  --primary-color-hover: #0052cc;
+  --connected-color-hover: rgba(16, 185, 129, 0.6);
+  --disconnected-color-hover: rgba(239, 68, 68, 0.6);
+  --action-btn-bg: rgba(59, 130, 246, 0.1);
+  --action-btn-bg-hover: rgba(59, 130, 246, 0.2);
+  --view-videos-btn-bg: rgba(139, 92, 246, 0.1);
+  --view-videos-btn-color: #8b5cf6;
+  --view-videos-btn-border: rgba(139, 92, 246, 0.3);
+  --view-videos-btn-bg-hover: rgba(139, 92, 246, 0.2);
+  --view-videos-btn-border-hover: rgba(139, 92, 246, 0.5);
+  --view-screenshots-btn-bg: rgba(14, 165, 233, 0.1);
+  --view-screenshots-btn-color: #0ea5e9;
+  --view-screenshots-btn-border: rgba(14, 165, 233, 0.3);
+  --view-screenshots-btn-bg-hover: rgba(14, 165, 233, 0.2);
+  --view-screenshots-btn-border-hover: rgba(14, 165, 233, 0.5);
+  --assign-btn-bg: #3b82f6;
+  --assign-btn-bg-hover: #2563eb;
+  --loading-spinner-border: rgba(255, 255, 255, 0.1);
+  --retry-btn-bg-hover: rgba(59, 130, 246, 0.1);
+  --video-call-fullscreen-bg: #0f172a;
+  
+  /* Modal variables */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.7);
+  --modal-content-bg: #1a1f2e;
+  --modal-header-border: #2d3446;
+  --modal-close-btn-color: #6c7293;
+  --modal-close-btn-hover-color: #fff;
+  --modal-body-bg: #1a1f2e;
+  --modal-footer-bg: #1a1f2e;
+  --modal-footer-border: #2d3446;
+  --modal-input-bg: #2d3748;
+  --modal-input-border: #4a5568;
+  --modal-input-text: #f7fafc;
+  --modal-input-placeholder: #a0aec0;
+  --modal-label-color: #e2e8f0;
+  --modal-btn-primary-bg: #3b82f6;
+  --modal-btn-primary-hover: #2563eb;
+  --modal-btn-secondary-bg: #4b5563;
+  --modal-btn-secondary-hover: #374151;
+  --modal-text-primary: #f7fafc;
+  --modal-text-secondary: #e2e8f0;
+  --modal-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Light Theme */
+.theme-light {
+  --bg-primary: #f7fafc;
+  --bg-secondary: #edf2f7;
+  --bg-tertiary: #e2e8f0;
+  --text-primary: #1a202c;
+  --text-secondary: #2d3748;
+  --text-muted: #718096;
+  --accent-primary: #1e3a8a;
+  --accent-secondary: #3b82f6;
+  --border-color: #e2e8f0;
+  --card-bg: #ffffff;
+  --input-bg: #edf2f7;
+  --input-text: #1a202c;
+  --button-primary-bg: #1e3a8a;
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #e2e8f0;
+  --button-secondary-text: #1a202c;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --info-color: #3b82f6;
+  --header-bg: #f0f4f8;
+  --sidebar-bg: #f8fafc;
+  --dashboard-bg: #f7fafc;
+  
+  /* Additional variables for SupervisorDashboard - Light Theme */
+  --brand-icon-color: #0066ff;
+  --primary-color: #0066ff;
+  --primary-hover-color: #0052cc;
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --main-content-bg: #f7fafc;
+  --claims-header-bg: #f0f4f8;
+  --connection-status-bg: #e2e8f0;
+  --connected-color: #10b981;
+  --disconnected-color: #ef4444;
+  --dashboard-tabs-bg: #f0f4f8;
+  --count-bg: #e2e8f0;
+  --claim-card-bg: #ffffff;
+  --claim-header-bg: #f8fafc;
+  --claim-notes-bg: #f8fafc;
+  --claim-actions-bg: #f8fafc;
+  --loading-spinner-bg: rgba(0, 0, 0, 0.1);
+  --primary-hover-bg: rgba(59, 130, 246, 0.1);
+  --video-call-bg: #f7fafc;
+  
+  /* Status badge colors - Light Theme */
+  --new-status-bg: rgba(6, 182, 212, 0.2);
+  --new-status-color: #0284c7;
+  --assigned-status-bg: rgba(249, 115, 22, 0.2);
+  --assigned-status-color: #ea580c;
+  --submitted-status-bg: rgba(139, 92, 246, 0.2);
+  --submitted-status-color: #7c3aed;
+  --closed-status-bg: rgba(34, 197, 94, 0.2);
+  --closed-status-color: #16a34a;
+  
+  /* Additional variables for ClaimManagement - Light Theme */
+  --primary-color-hover: #0052cc;
+  --connected-color-hover: rgba(16, 185, 129, 0.6);
+  --disconnected-color-hover: rgba(239, 68, 68, 0.6);
+  --action-btn-bg: rgba(59, 130, 246, 0.1);
+  --action-btn-bg-hover: rgba(59, 130, 246, 0.2);
+  --view-videos-btn-bg: rgba(139, 92, 246, 0.1);
+  --view-videos-btn-color: #8b5cf6;
+  --view-videos-btn-border: rgba(139, 92, 246, 0.3);
+  --view-videos-btn-bg-hover: rgba(139, 92, 246, 0.2);
+  --view-videos-btn-border-hover: rgba(139, 92, 246, 0.5);
+  --view-screenshots-btn-bg: rgba(14, 165, 233, 0.1);
+  --view-screenshots-btn-color: #0ea5e9;
+  --view-screenshots-btn-border: rgba(14, 165, 233, 0.3);
+  --view-screenshots-btn-bg-hover: rgba(14, 165, 233, 0.2);
+  --view-screenshots-btn-border-hover: rgba(14, 165, 233, 0.5);
+  --assign-btn-bg: #3b82f6;
+  --assign-btn-bg-hover: #2563eb;
+  --loading-spinner-border: rgba(0, 0, 0, 0.1);
+  --retry-btn-bg-hover: rgba(59, 130, 246, 0.1);
+  --video-call-fullscreen-bg: #f7fafc;
+  
+  /* Modal variables - Light Theme */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.5);
+  --modal-content-bg: #ffffff;
+  --modal-header-border: #e2e8f0;
+  --modal-close-btn-color: #718096;
+  --modal-close-btn-hover-color: #2d3748;
+  --modal-body-bg: #ffffff;
+  --modal-footer-bg: #f8fafc;
+  --modal-footer-border: #e2e8f0;
+  --modal-input-bg: #f7fafc;
+  --modal-input-border: #e2e8f0;
+  --modal-input-text: #1a202c;
+  --modal-input-placeholder: #a0aec0;
+  --modal-label-color: #2d3748;
+  --modal-btn-primary-bg: #3b82f6;
+  --modal-btn-primary-hover: #2563eb;
+  --modal-btn-secondary-bg: #e2e8f0;
+  --modal-btn-secondary-hover: #cbd5e0;
+  --modal-text-primary: #1a202c;
+  --modal-text-secondary: #4a5568;
+  --modal-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Theme */
+.theme-dark {
+  --bg-primary: #1a202c;
+  --bg-secondary: #2d3748;
+  --bg-tertiary: #4a5568;
+  --text-primary: #f7fafc;
+  --text-secondary: #e2e8f0;
+  --text-muted: #a0aec0;
+  --accent-primary: #1e3a8a;
+  --accent-secondary: #3b82f6;
+  --border-color: #4a5568;
+  --card-bg: #2d3748;
+  --input-bg: #4a5568;
+  --input-text: #f7fafc;
+  --button-primary-bg: #1e3a8a;
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #4a5568;
+  --button-secondary-text: #f7fafc;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --info-color: #3b82f6;
+  --header-bg: #1a1a2e;
+  --sidebar-bg: #1a1a2e;
+  --dashboard-bg: #0f172a;
+  
+  /* Additional variables for SupervisorDashboard - Dark Theme */
+  --brand-icon-color: #0066ff;
+  --primary-color: #0066ff;
+  --primary-hover-color: #0052cc;
+  --hover-bg: rgba(255, 255, 255, 0.05);
+  --main-content-bg: #0f172a;
+  --claims-header-bg: rgba(15, 23, 42, 0.6);
+  --connection-status-bg: rgba(255, 255, 255, 0.06);
+  --connected-color: #10b981;
+  --disconnected-color: #ef4444;
+  --dashboard-tabs-bg: rgba(15, 23, 42, 0.5);
+  --count-bg: rgba(255, 255, 255, 0.1);
+  --claim-card-bg: rgba(30, 41, 59, 0.5);
+  --claim-header-bg: rgba(15, 23, 42, 0.4);
+  --claim-notes-bg: rgba(15, 23, 42, 0.3);
+  --claim-actions-bg: rgba(15, 23, 42, 0.4);
+  --loading-spinner-bg: rgba(255, 255, 255, 0.1);
+  --primary-hover-bg: rgba(59, 130, 246, 0.1);
+  --video-call-bg: #0f172a;
+  
+  /* Status badge colors - Dark Theme */
+  --new-status-bg: rgba(6, 182, 212, 0.2);
+  --new-status-color: #06b6d4;
+  --assigned-status-bg: rgba(249, 115, 22, 0.2);
+  --assigned-status-color: #f97316;
+  --submitted-status-bg: rgba(139, 92, 246, 0.2);
+  --submitted-status-color: #8b5cf6;
+  --closed-status-bg: rgba(34, 197, 94, 0.2);
+  --closed-status-color: #22c55e;
+  
+  /* Additional variables for ClaimManagement - Dark Theme */
+  --primary-color-hover: #0052cc;
+  --connected-color-hover: rgba(16, 185, 129, 0.6);
+  --disconnected-color-hover: rgba(239, 68, 68, 0.6);
+  --action-btn-bg: rgba(59, 130, 246, 0.1);
+  --action-btn-bg-hover: rgba(59, 130, 246, 0.2);
+  --view-videos-btn-bg: rgba(139, 92, 246, 0.1);
+  --view-videos-btn-color: #8b5cf6;
+  --view-videos-btn-border: rgba(139, 92, 246, 0.3);
+  --view-videos-btn-bg-hover: rgba(139, 92, 246, 0.2);
+  --view-videos-btn-border-hover: rgba(139, 92, 246, 0.5);
+  --view-screenshots-btn-bg: rgba(14, 165, 233, 0.1);
+  --view-screenshots-btn-color: #0ea5e9;
+  --view-screenshots-btn-border: rgba(14, 165, 233, 0.3);
+  --view-screenshots-btn-bg-hover: rgba(14, 165, 233, 0.2);
+  --view-screenshots-btn-border-hover: rgba(14, 165, 233, 0.5);
+  --assign-btn-bg: #3b82f6;
+  --assign-btn-bg-hover: #2563eb;
+  --loading-spinner-border: rgba(255, 255, 255, 0.1);
+  --retry-btn-bg-hover: rgba(59, 130, 246, 0.1);
+  --video-call-fullscreen-bg: #0f172a;
+  
+  /* Modal variables - Dark Theme */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.7);
+  --modal-content-bg: #1a1f2e;
+  --modal-header-border: #2d3446;
+  --modal-close-btn-color: #6c7293;
+  --modal-close-btn-hover-color: #fff;
+  --modal-body-bg: #1a1f2e;
+  --modal-footer-bg: #1a1f2e;
+  --modal-footer-border: #2d3446;
+  --modal-input-bg: #2d3748;
+  --modal-input-border: #4a5568;
+  --modal-input-text: #f7fafc;
+  --modal-input-placeholder: #a0aec0;
+  --modal-label-color: #e2e8f0;
+  --modal-btn-primary-bg: #3b82f6;
+  --modal-btn-primary-hover: #2563eb;
+  --modal-btn-secondary-bg: #4b5563;
+  --modal-btn-secondary-hover: #374151;
+  --modal-text-primary: #f7fafc;
+  --modal-text-secondary: #e2e8f0;
+  --modal-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Apply theme variables to common elements */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.card, .modal-content {
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+}
+
+input, select, textarea {
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  border-color: var(--border-color);
+}
+
+button.btn-primary {
+  background-color: var(--button-primary-bg);
+  color: var(--button-primary-text);
+}
+
+button.btn-secondary {
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+}
+
+/* Dashboard specific theme variables */
+.dashboard-wrapper {
+  background-color: var(--dashboard-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+.dashboard-header {
+  background-color: var(--header-bg) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.sidebar {
+  background-color: var(--sidebar-bg) !important;
+}
+
+.nav-item {
+  color: var(--text-primary) !important;
+}
+
+.nav-item:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.nav-item.active {
+  background-color: var(--accent-primary) !important;
+  color: var(--button-primary-text) !important;
+}
+
+/* Theme Toggle Switch Styles */
+.theme-toggle {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 30px;
+}
+
+.theme-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg-tertiary);
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 22px;
+  width: 22px;
+  left: 4px;
+  bottom: 4px;
+  background-color: var(--bg-primary);
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+  background-color: var(--accent-secondary);
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(30px);
+}
+
+.toggle-icons {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 10px;
+  color: var(--text-primary);
+}
+
+.toggle-icons .sun-icon,
+.toggle-icons .moon-icon {
+  font-size: 14px;
+}

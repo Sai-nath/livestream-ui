@@ -24,7 +24,7 @@ import {
 } from "../../utils/awss3storage";
 import "./VideoCall.css";
 
-const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
+const VideoCall = ({ socket, role, callId, onEndCall, claimNumber, claimId }) => {
   // State variables
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -64,6 +64,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [isConnected, setIsConnected] = useState(false); // Define isConnected state
+  const [fileToUpload, setFileToUpload] = useState(null);
 
   // Refs
   const localVideoRef = useRef(null);
@@ -951,23 +952,15 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         video: videoConstraints
       };
 
+      // Get a complete new stream with both video and audio to maintain track order
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints,
-        audio: false // We'll handle audio separately
+        audio: mediaConstraintsRef.current.audio
       });
-
-      // Get a new audio track
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
-      const audioTrack = audioStream.getAudioTracks()[0];
-      if (audioTrack) {
-        newStream.addTrack(audioTrack);
-      }
 
       // Apply mute state to the new audio track
-      if (isMuted && audioTrack) {
-        audioTrack.enabled = false;
+      if (isMuted && newStream.getAudioTracks()[0]) {
+        newStream.getAudioTracks()[0].enabled = false;
       }
 
       // Update local video
@@ -988,33 +981,21 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         newIsBackCamera ? "back" : "front"
       );
 
-      // Remove all existing senders
-      const senders = peerConnectionRef.current.getSenders();
-      const videoSender = senders.find(
-        sender => sender.track && sender.track.kind === "video"
-      );
-
-      const audioSender = senders.find(
-        sender => sender.track && sender.track.kind === "audio"
-      );
-
-      // Replace video track
-      if (videoSender && newStream.getVideoTracks()[0]) {
-        await videoSender.replaceTrack(newStream.getVideoTracks()[0]);
+      // Get all transceivers to maintain the same order
+      const transceivers = peerConnectionRef.current.getTransceivers();
+      
+      // Replace tracks in the existing transceivers to maintain m-line order
+      for (const transceiver of transceivers) {
+        if (transceiver.sender && transceiver.sender.track) {
+          const kind = transceiver.sender.track.kind;
+          const newTrack = newStream.getTracks().find(track => track.kind === kind);
+          
+          if (newTrack) {
+            console.log(`Replacing ${kind} track in existing transceiver`);
+            await transceiver.sender.replaceTrack(newTrack);
+          }
+        }
       }
-
-      // Replace audio track if needed
-      if (audioSender && newStream.getAudioTracks()[0]) {
-        await audioSender.replaceTrack(newStream.getAudioTracks()[0]);
-      }
-
-      // Create and send a new offer to renegotiate the connection
-      const offer = await peerConnectionRef.current.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true
-      });
-      await peerConnectionRef.current.setLocalDescription(offer);
-      socket.emit("video_offer", { callId, offer });
 
       console.log("Camera switch completed successfully");
     } catch (error) {
@@ -1099,6 +1080,85 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         // Do nothing for other states
         break;
     }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !socket) return;
+
+    try {
+      // Create a timestamp for the file
+      const timestamp = new Date().toISOString();
+      
+      // Set the file to upload state for UI feedback
+      setFileToUpload(file);
+      
+      // Show loading toast
+      const toastId = toast.loading(`Uploading ${file.name}...`);
+      
+      // Create file message object
+      const fileMessage = {
+        callId,
+        role,
+        text: `[File] ${file.name}`,
+        type: 'file',
+        name: file.name,
+        bytes: file.size,
+        path: URL.createObjectURL(file), // Create local URL for preview
+        isSelf: true,
+        timestamp: timestamp,
+        status: 'sending'
+      };
+
+      // Add file message to local state first
+      setMessages(prev => [...prev, { ...fileMessage, isLocal: true }]);
+
+      // Convert file to base64 for transmission
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const fileData = event.target.result;
+        
+        // Emit file data to server
+        socket.emit("file_message", {
+          ...fileMessage,
+          data: fileData,
+          status: 'sent'
+        });
+        
+        // Update toast to success
+        toast.update(toastId, { 
+          render: `${file.name} uploaded successfully`, 
+          type: "success", 
+          isLoading: false,
+          autoClose: 3000
+        });
+        
+        // Clear file upload state
+        setFileToUpload(null);
+      };
+      
+      reader.onerror = function() {
+        // Update toast to error
+        toast.update(toastId, { 
+          render: `Failed to upload ${file.name}`, 
+          type: "error", 
+          isLoading: false,
+          autoClose: 3000
+        });
+        
+        // Clear file upload state
+        setFileToUpload(null);
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      toast.error("Failed to upload file. Please try again.");
+      setFileToUpload(null);
+    }
+    
+    // Clear the file input
+    e.target.value = null;
   };
 
   const takeScreenshot = async () => {
@@ -1498,16 +1558,53 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             }
           ]);
 
-          toast.success("Recording saved successfully");
-
           socket.emit("recording_completed", {
             callId,
             recordingUrl: url,
             recordedBy: role,
             timestamp: new Date().toISOString()
           });
+
+          socket.emit('save_recording', {
+            callId: callId,
+            timestamp: new Date().toISOString(),
+            location: currentLocation,
+            recordedBy: role,
+            claimNumber: claimNumber,
+            s3Url: url,
+            duration: recordingStateRef.current.duration,
+            claimId: claimId // Include claimId in the save_recording event
+          });
+
+          // Add debugging log before emitting save_recording
+          console.log("Emitting save_recording with data:", {
+            callId,
+            claimNumber,
+            claimId,
+            recordedBy: role,
+            location: currentLocation
+          });
+
+          // Listen for recording_saved event to confirm success
+          socket.once('recording_saved', (response) => {
+            if (response.success) {
+              toast.success("Recording saved successfully");
+              console.log("Recording saved successfully:", response);
+            } else {
+              toast.error("Error saving recording: " + (response.error || "Unknown error"));
+              console.error("Error saving recording:", response.error);
+            }
+          });
+
+          setIsRecording(false);
+          setUploadStatus({
+            uploading: false,
+            progress: 100,
+            type: null,
+            fileName: null
+          });
         } catch (error) {
-          console.error("Error processing recording:", error);
+          console.error("Failed to process recording:", error);
           toast.error("Failed to save recording");
 
           socket.emit("recording_error", {
@@ -1533,7 +1630,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
           return new Promise((resolve, reject) => {
             try {
               if (!recordingStateRef.current?.mediaRecorder) {
-                throw new Error("No active recording found");
+                throw new Error("No active recording to stop");
               }
 
               if (
@@ -1552,7 +1649,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
       };
 
       // Request data in smaller chunks for iOS
-      mediaRecorder.start(1000);
+      mediaRecorder.start(1000); // 1 second chunks
       setIsRecording(true);
       toast.info("Recording started");
 
@@ -1647,7 +1744,6 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
             const fileName = `recordings/claim-${claimNumber}/call-${callId}/${timestamp}.webm`;
 
-            // Update UI to show upload progress
             setUploadStatus({
               uploading: true,
               progress: 0,
@@ -1655,51 +1751,45 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
               fileName
             });
 
-            // Upload to S3 with enhanced error handling and retry logic
-            const uploadWithRetry = async (retries = 3) => {
-              try {
-                const url = await uploadToS3(fileName, recordedBlob, {
-                  contentType: "video/webm",
-                  metadata: {
-                    claimNumber,
-                    callId,
-                    startTime: recordingState.startTime.toISOString(),
-                    endTime: new Date().toISOString(),
-                    duration: (new Date() - recordingState.startTime) / 1000
-                  },
-                  progressCallback: progress => {
-                    setUploadStatus(prev => ({
-                      ...prev,
-                      progress
-                    }));
-                  }
-                });
-
-                // Notify successful upload
-                socket.emit("recording_completed", {
-                  callId,
-                  recordingUrl: url,
-                  recordedBy: role,
-                  timestamp: new Date().toISOString()
-                });
-
-                return url;
-              } catch (error) {
-                if (retries > 0) {
-                  console.warn(
-                    `Upload failed, retrying... (${retries} attempts left)`
-                  );
-                  await new Promise(resolve => setTimeout(resolve, 2000));
-                  return uploadWithRetry(retries - 1);
-                }
-                throw error;
+            // Upload directly using uploadRecording
+            const s3Key = `recordings/claim-${claimNumber}/call-${callId}/${timestamp}.webm`;
+            const url = await uploadRecording(
+              claimNumber,
+              callId,
+              recordedBlob,
+              {
+                startTime: recordingState.startTime.toISOString(),
+                endTime: new Date().toISOString(),
+                duration:
+                  (new Date() - recordingState.startTime) / 1000
+              },
+              progress => {
+                setUploadStatus(prev => ({
+                  ...prev,
+                  progress
+                }));
               }
-            };
+            );
 
-            const url = await uploadWithRetry();
+            setMessages(prev => [
+              ...prev,
+              {
+                type: "recording",
+                url: url,
+                timestamp: new Date().toISOString(),
+                recordedBy: role,
+                message: `Recording from ${new Date().toLocaleString()}`,
+                isLocal: true
+              }
+            ]);
 
-            // Reset states after successful upload
-            setRecordingUrl(url);
+            socket.emit("recording_completed", {
+              callId,
+              recordingUrl: url,
+              recordedBy: role,
+              timestamp: new Date().toISOString()
+            });
+
             setIsRecording(false);
             setUploadStatus({
               uploading: false,
@@ -1707,8 +1797,6 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
               type: null,
               fileName: null
             });
-
-            toast.success("Recording saved successfully");
           } catch (error) {
             console.error("Failed to process recording:", error);
             toast.error("Failed to save recording");
@@ -1996,7 +2084,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         if (!localStream) {
           console.log("Setting up local stream for answer");
           const stream = await setupMediaStream();
-          console.log(`Adding tracks to peer connection, track count: ${stream?.getTracks().length || 0}`);
+          console.log(`Adding ${stream.getTracks().length} tracks to peer connection`);
           if (peerConnectionRef.current) {
             stream.getTracks().forEach(track => {
               console.log(`Adding ${track.kind} track to peer connection for answer`);
@@ -2123,7 +2211,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
             offerToReceiveVideo: true
           });
           
-          console.log("Setting local description for offer");
+          console.log("Setting local description after negotiation");
           await peerConnectionRef.current.setLocalDescription(offer);
           
           console.log("Sending offer to remote peer");
@@ -2169,6 +2257,68 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
       };
       setMessages(prev => [...prev, messageWithType]);
 
+      // Increment unread count if chat is not visible
+      if (!showChat || isChatMinimized) {
+        setUnreadMessages(prev => prev + 1);
+        // Play notification sound if available
+        const notificationSound = document.getElementById("notification-sound");
+        if (notificationSound) {
+          notificationSound
+            .play()
+            .catch(err =>
+              console.error("Failed to play notification sound:", err)
+            );
+        }
+      }
+    };
+
+    const handleFileMessage = data => {
+      console.log("Received file message:", data);
+      
+      // For remote files, create a local blob URL from the base64 data
+      let localPath = null;
+      if (data.data) {
+        try {
+          // Extract the base64 data (remove the data URL prefix if present)
+          const base64Data = data.data.includes('base64,') 
+            ? data.data.split('base64,')[1] 
+            : data.data;
+          
+          // Determine file type from the data URL or use a default
+          const fileType = data.data.includes(':') 
+            ? data.data.split(':')[1].split(';')[0] 
+            : 'application/octet-stream';
+          
+          // Convert base64 to binary
+          const binaryData = atob(base64Data);
+          
+          // Create array buffer from binary data
+          const arrayBuffer = new ArrayBuffer(binaryData.length);
+          const uint8Array = new Uint8Array(arrayBuffer);
+          for (let i = 0; i < binaryData.length; i++) {
+            uint8Array[i] = binaryData.charCodeAt(i);
+          }
+          
+          // Create blob and URL
+          const blob = new Blob([uint8Array], { type: fileType });
+          localPath = URL.createObjectURL(blob);
+          
+          console.log("Created local blob URL for remote file:", localPath);
+        } catch (error) {
+          console.error("Error creating blob URL from file data:", error);
+        }
+      }
+      
+      // Create file message object
+      const fileMessage = {
+        ...data,
+        type: 'file',
+        isLocal: false,
+        path: localPath || data.path // Use the created blob URL or the original path
+      };
+      
+      setMessages(prev => [...prev, fileMessage]);
+      
       // Increment unread count if chat is not visible
       if (!showChat || isChatMinimized) {
         setUnreadMessages(prev => prev + 1);
@@ -2237,12 +2387,14 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
     };
 
     socket.on("chat_message", handleChatMessage);
+    socket.on("file_message", handleFileMessage);
     socket.on("location_update", handleLocationUpdate);
     socket.on("request_location", handleLocationRequest);
     socket.on("screenshot_received", handleScreenshotReceived);
 
     return () => {
       socket.off("chat_message", handleChatMessage);
+      socket.off("file_message", handleFileMessage);
       socket.off("location_update", handleLocationUpdate);
       socket.off("request_location", handleLocationRequest);
       socket.off("screenshot_received", handleScreenshotReceived);
@@ -2324,11 +2476,21 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
 
     // Stop recording if active
     if (isRecording && recordingStateRef.current) {
-      recordingStateRef.current
-        .stopRecording()
-        .catch(err =>
-          console.error("Error stopping recording during cleanup:", err)
-        );
+      try {
+        // Only attempt to stop if the mediaRecorder exists and is in recording state
+        if (recordingStateRef.current.mediaRecorder && 
+            recordingStateRef.current.mediaRecorder.state === "recording") {
+          recordingStateRef.current
+            .stopRecording()
+            .catch(err =>
+              console.error("Error stopping recording during cleanup:", err)
+            );
+        } else {
+          console.log("Recording already inactive, skipping stop operation");
+        }
+      } catch (err) {
+        console.error("Error checking recording state:", err);
+      }
     }
 
     // Stop screensharing if active
@@ -2438,6 +2600,55 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
     onEndCall();
     
     console.log("Call ended");
+  };
+
+  const getFileIcon = (fileName) => {
+    const fileExtension = fileName.split('.').pop().toLowerCase();
+    switch (fileExtension) {
+      case 'pdf':
+        return '📄';
+      case 'docx':
+      case 'doc':
+        return '📝';
+      case 'xlsx':
+      case 'xls':
+        return '📊';
+      case 'pptx':
+      case 'ppt':
+        return '📈';
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return '📸';
+      case 'mp3':
+      case 'wav':
+        return '🎵';
+      case 'mp4':
+      case 'avi':
+      case 'mov':
+        return '📹';
+      default:
+        return '📁';
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    } else if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    } else {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+  };
+
+  const formatMessageTime = (timestamp) => {
+    const date = new Date(timestamp);
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = date.getSeconds();
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -2714,93 +2925,6 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
         </div>
       )}
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="settings-panel">
-          <div className="settings-header">
-            <h3>Call Settings</h3>
-            <button className="close-button" onClick={toggleSettings}>
-              ×
-            </button>
-          </div>
-          <div className="settings-content">
-            <div className="settings-section">
-              <h4>Connection Info</h4>
-              <div className="settings-info">
-                <p>Duration: {formatDuration(callStats.duration)}</p>
-                <p>
-                  Quality:{" "}
-                  <span className={callStats.connectionQuality}>
-                    {callStats.connectionQuality}
-                  </span>
-                </p>
-                <p>Bandwidth: {callStats.bandwidth} kbps</p>
-                <p>Resolution: {callStats.resolution || "Unknown"}</p>
-                <p>
-                  Data Transferred: {formatBytes(callStats.bytesTransferred)}
-                </p>
-                <p>Claim Number: {claimNumber || "Not provided"}</p>
-              </div>
-            </div>
-
-            <div className="settings-section">
-              <h4>Available Devices</h4>
-              {availableDevices.cameras.length > 0 ? (
-                <>
-                  <label>Cameras:</label>
-                  <select className="device-select">
-                    {availableDevices.cameras.map(camera => (
-                      <option key={camera.id} value={camera.id}>
-                        {camera.label}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <p>No cameras detected</p>
-              )}
-
-              {availableDevices.microphones.length > 0 ? (
-                <>
-                  <label>Microphones:</label>
-                  <select className="device-select">
-                    {availableDevices.microphones.map(mic => (
-                      <option key={mic.id} value={mic.id}>
-                        {mic.label}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <p>No microphones detected</p>
-              )}
-            </div>
-
-            <div className="settings-section">
-              <h4>Media Controls</h4>
-              <div className="settings-controls">
-                <button onClick={toggleMute}>
-                  {isMuted ? "Unmute Microphone" : "Mute Microphone"}
-                </button>
-                <button onClick={toggleVideo}>
-                  {isVideoOff ? "Turn Video On" : "Turn Video Off"}
-                </button>
-                {role === "investigator" && (
-                  <button onClick={toggleCamera}>
-                    Switch to {isBackCamera ? "Front" : "Back"} Camera
-                  </button>
-                )}
-                <button onClick={toggleScreenSharing}>
-                  {isScreenSharing
-                    ? "Stop Screen Sharing"
-                    : "Start Screen Sharing"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Chat Window */}
       {showChat && (
         <div
@@ -2809,11 +2933,12 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
           }`}
         >
           <div className="chat-header">
-            <span>Chat</span>
+            <span>Live Chat</span>
             <div className="chat-controls">
               <button
                 className="minimize-button"
                 onClick={() => setIsChatMinimized(!isChatMinimized)}
+                title={isChatMinimized ? "Maximize" : "Minimize"}
               >
                 {isChatMinimized ? "□" : "−"}
               </button>
@@ -2823,6 +2948,7 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                   setShowChat(false);
                   setIsChatMinimized(false);
                 }}
+                title="Close chat"
               >
                 ×
               </button>
@@ -2831,20 +2957,56 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
           {!isChatMinimized && (
             <>
               <div className="chat-messages" ref={chatMessagesRef}>
-                {messages
-                  .filter(msg => msg.type === "chat" || msg.message) // Only show chat messages
-                  .map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`message ${msg.isLocal ? "local" : "remote"}`}
-                    >
-                      <div className="message-role">{msg.role}</div>
-                      <div className="message-content">{msg.message}</div>
-                      <div className="message-time">
-                        {new Date(msg.timestamp).toLocaleTimeString()}
+                {messages.length === 0 ? (
+                  <div className="empty-chat-message">
+                    <div className="empty-chat-icon">💬</div>
+                    <p>No messages yet. Start the conversation!</p>
+                  </div>
+                ) : (
+                  messages
+                    .filter(msg => msg.type === "chat" || msg.type === "file" || msg.message)
+                    .map((msg, index) => (
+                      <div
+                        key={index}
+                        className={`message ${msg.isLocal ? "local" : "remote"}`}
+                      >
+                        <div className="message-role">{msg.role}</div>
+                        <div className="message-content">
+                          {msg.type === 'file' ? (
+                            <div className="file-message">
+                              <div className="file-icon">
+                                {getFileIcon(msg.name)}
+                              </div>
+                              <div className="file-details">
+                                <div className="file-name">{msg.name}</div>
+                                <div className="file-size">{formatFileSize(msg.bytes)}</div>
+                                {msg.path ? (
+                                  <a 
+                                    href={msg.path} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="file-download"
+                                    download={msg.name}
+                                  >
+                                    <span className="download-icon">⬇️</span> Download
+                                  </a>
+                                ) : (
+                                  <div className="file-download-unavailable">
+                                    Download unavailable
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            msg.message
+                          )}
+                        </div>
+                        <div className="message-time">
+                          {formatMessageTime(msg.timestamp)}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                )}
               </div>
               <form onSubmit={sendMessage} className="chat-input">
                 <input
@@ -2852,8 +3014,21 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber }) => {
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
+                  aria-label="Message input"
                 />
-                <button type="submit">Send</button>
+                <label htmlFor="file-upload" className="file-upload-label" title="Attach a file">
+                  <span role="img" aria-label="Attach file">📎</span>
+                  <input
+                    id="file-upload"
+                    type="file"
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                    aria-label="Upload file"
+                  />
+                </label>
+                <button type="submit" disabled={!newMessage.trim() && !fileToUpload}>
+                  Send
+                </button>
               </form>
             </>
           )}

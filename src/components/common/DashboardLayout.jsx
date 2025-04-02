@@ -1,15 +1,63 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import ThemeToggle from './ThemeToggle';
+import { FaSearch } from 'react-icons/fa';
+import { toast } from 'react-toastify';
 
 const DashboardLayout = () => {
     const { user, logout } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
 
     const handleLogout = async () => {
         await logout();
         navigate('/login');
+    };
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        
+        if (!searchQuery.trim()) {
+            toast.info('Please enter a claim number to search');
+            return;
+        }
+        
+        setIsSearching(true);
+        
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims/search?query=${searchQuery}`, {
+                headers: {
+                    'Authorization': `Bearer ${user.token}`
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to search claims');
+            }
+            
+            const data = await response.json();
+            
+            if (data.length === 0) {
+                toast.info(`No claims found matching "${searchQuery}"`);
+            } else {
+                // Navigate to the claims page with the search results
+                navigate('/supervisor/claims', { 
+                    state: { 
+                        searchResults: data,
+                        searchQuery: searchQuery
+                    } 
+                });
+                toast.success(`Found ${data.length} claim(s) matching "${searchQuery}"`);
+            }
+        } catch (error) {
+            console.error('Error searching claims:', error);
+            toast.error('Error searching claims');
+        } finally {
+            setIsSearching(false);
+        }
     };
 
     const getNavLinks = () => {
@@ -22,9 +70,9 @@ const DashboardLayout = () => {
                         permission: 'CLAIM_CREATE'
                     },
                     {
-                        to: '/supervisor/monitoring',
-                        label: 'Live Monitoring',
-                        permission: 'STREAM_MONITOR'
+                        to: '/supervisor/search',
+                        label: 'Search',
+                        permission: 'CLAIM_CREATE'
                     }
                 ];
             case 'Investigator':
@@ -64,19 +112,42 @@ const DashboardLayout = () => {
 
                             {/* Navigation Links */}
                             <nav className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                                {getNavLinks().map((link) => (
+                                {getNavLinks().map((link, index) => (
                                     user.permissions.includes(link.permission) && (
-                                        <Link
-                                            key={link.to}
-                                            to={link.to}
-                                            className={`${
-                                                location.pathname === link.to
-                                                    ? 'border-blue-500 text-gray-900'
-                                                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                                            } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                                        >
-                                            {link.label}
-                                        </Link>
+                                        <React.Fragment key={link.to}>
+                                            <Link
+                                                to={link.to}
+                                                className={`${
+                                                    location.pathname === link.to
+                                                        ? 'border-blue-500 text-gray-900'
+                                                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                                                } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                                            >
+                                                {link.label}
+                                            </Link>
+                                            
+                                            {/* Add search bar next to Claims Management */}
+                                            {link.label === 'Claims Management' && (
+                                                <form onSubmit={handleSearch} className="inline-flex items-center ml-4">
+                                                    <div className="relative flex items-center">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search by claim number..."
+                                                            value={searchQuery}
+                                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                                            className="border border-gray-300 rounded-md py-1 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+                                                        />
+                                                        <button 
+                                                            type="submit" 
+                                                            className="absolute right-0 top-0 h-full px-2 text-gray-500 hover:text-blue-500"
+                                                            disabled={isSearching}
+                                                        >
+                                                            <FaSearch />
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            )}
+                                        </React.Fragment>
                                     )
                                 ))}
                             </nav>
@@ -86,6 +157,7 @@ const DashboardLayout = () => {
                         <div className="flex items-center">
                             <div className="hidden sm:flex sm:items-center sm:ml-6">
                                 <div className="flex items-center space-x-4">
+                                    <ThemeToggle />
                                     <div className="text-sm">
                                         <span className="text-gray-500">Logged in as </span>
                                         <span className="text-gray-900 font-medium">

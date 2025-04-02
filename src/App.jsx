@@ -6,6 +6,10 @@ import 'react-toastify/dist/ReactToastify.css';
 // Context Providers
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+
+// Styles
+import './styles/theme.css';
 
 // Components
 import Login from './components/auth/Login';
@@ -36,59 +40,69 @@ function App() {
         return children;
     };
 
+    // Toast Container with Theme Support
+    const ThemedToastContainer = () => {
+        const { theme } = useTheme();
+        return (
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme={theme}
+            />
+        );
+    };
+
     return (
         <AuthProvider>
-            <SocketProvider>
-                <div className="min-h-screen bg-gray-900">
-                    <Routes>
-                        {/* Public Routes */}
-                        <Route path="/" element={<LandingPage />} />
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/unauthorized" element={<Unauthorized />} />
+            <ThemeProvider>
+                <SocketProvider>
+                    <div className="min-h-screen">
+                        <Routes>
+                            {/* Public Routes */}
+                            <Route path="/" element={<LandingPage />} />
+                            <Route path="/login" element={<Login />} />
+                            <Route path="/unauthorized" element={<Unauthorized />} />
 
-                        {/* Protected Routes */}
-                        <Route path="/admin/*" element={
-                            <ProtectedRoute allowedRoles={['ADMIN']}>
-                                <AdminDashboard />
-                            </ProtectedRoute>
-                        } />
+                            {/* Protected Routes */}
+                            <Route path="/admin/*" element={
+                                <ProtectedRoute allowedRoles={['ADMIN']}>
+                                    <AdminDashboard />
+                                </ProtectedRoute>
+                            } />
 
-                        <Route path="/supervisor/*" element={
-                            <ProtectedRoute allowedRoles={['SUPERVISOR']}>
-                                <SupervisorDashboard />
-                            </ProtectedRoute>
-                        } />
+                            <Route path="/supervisor/*" element={
+                                <ProtectedRoute allowedRoles={['SUPERVISOR']}>
+                                    <SupervisorDashboard />
+                                </ProtectedRoute>
+                            } />
 
-                        <Route path="/investigator/*" element={
-                            <ProtectedRoute allowedRoles={['INVESTIGATOR']}>
-                                <InvestigatorDashboard />
-                            </ProtectedRoute>
-                        } />
+                            <Route path="/investigator/*" element={
+                                <ProtectedRoute allowedRoles={['INVESTIGATOR']}>
+                                    <InvestigatorDashboard />
+                                </ProtectedRoute>
+                            } />
 
-                        <Route path="/officer/*" element={
-                            <ProtectedRoute allowedRoles={['OFFICER']}>
-                                <OfficerDashboard />
-                            </ProtectedRoute>
-                        } />
+                            <Route path="/officer/*" element={
+                                <ProtectedRoute allowedRoles={['OFFICER']}>
+                                    <OfficerDashboard />
+                                </ProtectedRoute>
+                            } />
 
-                        {/* Catch all route */}
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
+                            {/* Catch all route */}
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
 
-                    <ToastContainer
-                        position="top-right"
-                        autoClose={3000}
-                        hideProgressBar={false}
-                        newestOnTop
-                        closeOnClick
-                        rtl={false}
-                        pauseOnFocusLoss
-                        draggable
-                        pauseOnHover
-                        theme="dark"
-                    />
-                </div>
-            </SocketProvider>
+                        <ThemedToastContainer />
+                    </div>
+                </SocketProvider>
+            </ThemeProvider>
         </AuthProvider>
     );
 }

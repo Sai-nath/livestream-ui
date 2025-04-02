@@ -6,6 +6,7 @@ import { FaSpinner, FaExclamationCircle, FaFilter, FaSearch, FaChevronDown } fro
 import { useSocket } from '../../contexts/SocketContext';
 import VideoCall from '../common/VideoCall';
 import ClaimCard from './ClaimCard';
+import AssignInvestigatorModal from '../supervisor/AssignInvestigatorModal';
 import './AssignedClaims.css';
 
 const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
@@ -19,6 +20,8 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
     const [filter, setFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
+    const [showAssignModal, setShowAssignModal] = useState(false);
+    const [selectedClaimForAssign, setSelectedClaimForAssign] = useState(null);
     const { user } = useAuth();
     const { socket } = useSocket();
     const navigate = useNavigate();
@@ -162,6 +165,16 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
         });
     };
 
+    const handleAssignInvestigator = (claim) => {
+        setSelectedClaimForAssign(claim);
+        setShowAssignModal(true);
+    };
+
+    const handleAssignmentComplete = () => {
+        fetchAssignedClaims(); // Refresh the claims list
+        toast.success('Investigator assigned successfully');
+    };
+
     const handleEndCall = () => {
         console.log('Ending call, activeCall:', activeCall, 'currentClaimData:', currentClaimData);
         if (socket && activeCall) {
@@ -231,6 +244,8 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
                     socket={socket}
                     onEndCall={handleEndCall}
                     claimNumber={claimNumber}
+                    claimId={currentClaimData.claimId}
+                    user={user}
                 />
             </div>
         );
@@ -376,6 +391,7 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
                             isUserOnline={isUserOnline}
                             handleStartInvestigation={handleStartInvestigation}
                             activeCall={activeCall}
+                            onAssignInvestigator={handleAssignInvestigator}
                         />
                     ))}
                 </div>
@@ -386,6 +402,14 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
                 <FaSpinner className="refresh-spinner" />
                 <span>Release to refresh</span>
             </div>
+
+            {showAssignModal && selectedClaimForAssign && (
+                <AssignInvestigatorModal
+                    claim={selectedClaimForAssign}
+                    onClose={() => setShowAssignModal(false)}
+                    onAssigned={handleAssignmentComplete}
+                />
+            )}
         </div>
     );
 };
