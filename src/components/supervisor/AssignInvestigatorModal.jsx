@@ -121,9 +121,11 @@ const AssignInvestigatorModal = ({ claim, onClose, onAssigned }) => {
     if (loading) {
         return (
             <div className="modal-overlay">
-                <div className="modal-content loading">
-                    <div className="spinner"></div>
-                    <p>Loading investigators...</p>
+                <div className="modal-content">
+                    <div className="modal-body" style={{ textAlign: 'center', padding: '2rem' }}>
+                        <div className="loading-spinner"></div>
+                        <p>Loading investigators...</p>
+                    </div>
                 </div>
             </div>
         );
@@ -132,10 +134,18 @@ const AssignInvestigatorModal = ({ claim, onClose, onAssigned }) => {
     if (error) {
         return (
             <div className="modal-overlay">
-                <div className="modal-content error">
-                    <p className="error-message">{error}</p>
-                    <button onClick={fetchInvestigators}>Retry</button>
-                    <button onClick={onClose}>Close</button>
+                <div className="modal-content">
+                    <div className="modal-header">
+                        <h2>Error</h2>
+                        <button className="close-button" onClick={onClose}>&times;</button>
+                    </div>
+                    <div className="modal-body">
+                        <p className="error-message">{error}</p>
+                    </div>
+                    <div className="modal-footer">
+                        <button className="btn btn-secondary" onClick={onClose}>Close</button>
+                        <button className="btn btn-primary" onClick={fetchInvestigators}>Retry</button>
+                    </div>
                 </div>
             </div>
         );
@@ -149,39 +159,40 @@ const AssignInvestigatorModal = ({ claim, onClose, onAssigned }) => {
                     <button className="close-button" onClick={onClose}>&times;</button>
                 </div>
                 
-                <div className="investigators-list">
+                <div className="modal-body">
                     {investigators.length === 0 ? (
-                        <p className="no-investigators">No investigators available</p>
+                        <div className="no-investigators">
+                            No investigators available
+                        </div>
                     ) : (
-                        investigators.map(investigator => {
-                            const online = isUserOnline(investigator.id);
-                            const lastActive = getLastActiveTime(investigator.id);
-                            return (
+                        <div className="investigators-list">
+                            {investigators.map(investigator => (
                                 <div key={investigator.id} className="investigator-item">
                                     <div className="investigator-info">
-                                        <div className="name-status">
-                                            <span className="investigator-name">{investigator.name}</span>
-                                            <div className={`status-indicator ${online ? 'online' : 'offline'}`}>
-                                                {online ? 'Connected' : 'Offline'}
-                                            </div>
-                                        </div>
+                                        <div className="investigator-name">{investigator.name}</div>
                                         <div className="investigator-email">{investigator.email}</div>
-                                        {!online && lastActive && (
-                                            <div className="last-active">
-                                                Last active: {formatLastActive(lastActive)}
-                                            </div>
-                                        )}
+                                        <div className="investigator-status">
+                                            <span className={`status-indicator ${isUserOnline(investigator.id) ? 'status-online' : 'status-offline'}`}></span>
+                                            {isUserOnline(investigator.id) ? 'Online' : 'Offline'}
+                                            {!isUserOnline(investigator.id) && getLastActiveTime(investigator.id) && (
+                                                <span className="last-active"> - Last active {formatLastActive(getLastActiveTime(investigator.id))}</span>
+                                            )}
+                                        </div>
                                     </div>
                                     <button 
-                                        className="assign-button"
+                                        className="btn btn-primary"
                                         onClick={() => handleAssign(investigator.id)}
                                     >
                                         Assign
                                     </button>
                                 </div>
-                            );
-                        })
+                            ))}
+                        </div>
                     )}
+                </div>
+                
+                <div className="modal-footer">
+                    <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
                 </div>
             </div>
         </div>

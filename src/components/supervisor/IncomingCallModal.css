@@ -4,7 +4,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.8);
+    background-color: var(--modal-overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -13,12 +13,12 @@
 }
 
 .call-content {
-    background-color: #1a1a2e;
+    background-color: var(--modal-content-bg);
     border-radius: 1rem;
     padding: 2rem;
     width: 100%;
     max-width: 400px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--modal-shadow);
     animation: slideIn 0.3s ease-out;
 }
 
@@ -28,7 +28,7 @@
 }
 
 .call-header h2 {
-    color: #ffffff;
+    color: var(--modal-text-primary);
     font-size: 1.5rem;
     margin-bottom: 1rem;
 }
@@ -38,13 +38,13 @@
 }
 
 .investigator-name {
-    color: #ffffff;
+    color: var(--modal-text-primary);
     font-size: 1.25rem;
     margin-bottom: 0.5rem;
 }
 
 .claim-number {
-    color: #94a3b8;
+    color: var(--modal-text-secondary);
     font-size: 1rem;
 }
 
@@ -68,23 +68,23 @@
 }
 
 .accept-btn {
-    background-color: #22c55e;
+    background-color: var(--success-color);
     color: white;
     border: none;
 }
 
 .accept-btn:hover {
-    background-color: #16a34a;
+    background-color: rgba(16, 185, 129, 0.8);
 }
 
 .reject-btn {
-    background-color: #ef4444;
+    background-color: var(--error-color);
     color: white;
     border: none;
 }
 
 .reject-btn:hover {
-    background-color: #dc2626;
+    background-color: rgba(239, 68, 68, 0.8);
 }
 
 .video-call-fullscreen {

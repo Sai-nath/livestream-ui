@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useSocket } from '../../contexts/SocketContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaClock, FaUserCheck, FaFileAlt, FaCheckCircle, FaUserPlus, FaPlus } from 'react-icons/fa';
-import CreateClaimForm from './CreateClaimForm';
+import { FaClock, FaUserCheck, FaFileAlt, FaCheckCircle, FaUserPlus, FaPlus, FaVideo, FaCamera, FaSearch, FaTimes } from 'react-icons/fa';
+import { toast } from 'react-toastify';
+import CreateClaimModal from './CreateClaimModal';
 import AssignInvestigatorModal from './AssignInvestigatorModal';
 import IncomingCallModal from './IncomingCallModal';
 import VideoCall from '../common/VideoCall';
+import MediaViewer from './MediaViewer';
 
 const ClaimManagement = () => {
     const [claims, setClaims] = useState([]);
@@ -18,9 +21,25 @@ const ClaimManagement = () => {
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [incomingCall, setIncomingCall] = useState(null);
     const [activeCall, setActiveCall] = useState(null);
+    const [activeCallData, setActiveCallData] = useState(null);
     const [showVideoCall, setShowVideoCall] = useState(false);
+    const [claimCounts, setClaimCounts] = useState({
+        New: 0,
+        Assigned: 0,
+        Submitted: 0,
+        Closed: 0
+    });
+    const [isSearchMode, setIsSearchMode] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    
     const { trackActivity, isConnected, socket } = useSocket();
     const { user } = useAuth();
+    const navigate = useNavigate();
+    const params = useParams();
+    const location = useLocation();
+
+    // Check if we're in media viewing mode
+    const isViewingMedia = params.claimId && params.mediaType;
 
     const tabs = [
         { id: 'New', label: 'New Claims', icon: <FaClock /> },
@@ -37,8 +56,42 @@ const ClaimManagement = () => {
     };
 
     useEffect(() => {
-        fetchClaims(activeTab);
-    }, [activeTab]);
+        // Check if we have search results from the global search
+        if (location.state?.searchResults) {
+            setClaims(location.state.searchResults);
+            setSearchQuery(location.state.searchQuery);
+            setIsSearchMode(true);
+            setLoading(false);
+            
+            // Clear the location state to prevent showing search results after refresh
+            navigate(location.pathname, { replace: true });
+        } else {
+            // If not in search mode, fetch claims normally
+            fetchClaims(activeTab);
+            fetchClaimCounts();
+        }
+    }, [location, activeTab]);
+    
+    // Function to fetch counts for all claim statuses
+    const fetchClaimCounts = async () => {
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims/counts`, {
+                headers: {
+                    'Authorization': `Bearer ${user.token}`
+                }
+            });
+            
+            if (!response.ok) {
+                console.error('Failed to fetch claim counts');
+                return;
+            }
+            
+            const data = await response.json();
+            setClaimCounts(data);
+        } catch (error) {
+            console.error('Error fetching claim counts:', error);
+        }
+    };
 
     useEffect(() => {
         if (socket) {
@@ -54,12 +107,14 @@ const ClaimManagement = () => {
 
             socket.on('investigation_call_accepted', (data) => {
                 setActiveCall(data.callId);
+                setActiveCallData(data);
                 setShowVideoCall(true);
             });
 
             socket.on('call_ended', () => {
                 setShowVideoCall(false);
                 setActiveCall(null);
+                setActiveCallData(null);
                 setIncomingCall(null);
             });
         }
@@ -78,7 +133,10 @@ const ClaimManagement = () => {
         try {
             setLoading(true);
             setError(null);
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims?status=${status}`, {
+            // Map the 'Submitted' tab to 'InvestigationCompleted'
+            const statusFilter = status === 'Submitted' ? 'InvestigationCompleted' : status;
+            console.log('Fetching claims with status:', statusFilter);
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims?status=${statusFilter}`, {
                 headers: {
                     'Authorization': `Bearer ${user.token}`
                 }
@@ -95,6 +153,12 @@ const ClaimManagement = () => {
             if (claimsArray.length > 0) {
                 trackActivity('CLAIMS_FETCHED', { status, count: claimsArray.length });
             }
+            
+            // Update the count for the current tab
+            setClaimCounts(prev => ({
+                ...prev,
+                [status]: claimsArray.length
+            }));
         } catch (error) {
             console.error('Error fetching claims:', error);
             setError(error.message);
@@ -142,7 +206,7 @@ const ClaimManagement = () => {
         const normalizedStatus = status.toLowerCase();
         if (normalizedStatus === 'new') return 'new';
         if (normalizedStatus === 'assigned') return 'assigned';
-        if (normalizedStatus === 'submitted') return 'submitted';
+        if (normalizedStatus === 'investigationcompleted' || normalizedStatus === 'submitted') return 'submitted';
         if (normalizedStatus === 'closed') return 'closed';
         
         return '';
@@ -179,12 +243,82 @@ const ClaimManagement = () => {
         setIncomingCall(null);
     };
 
+    const handleViewVideos = (claim) => {
+        navigate(`/supervisor/claims/${claim.ClaimId}/media/videos`);
+    };
+
+    const handleViewScreenshots = (claim) => {
+        navigate(`/supervisor/claims/${claim.ClaimId}/media/screenshots`);
+    };
+
+    const handleCloseMediaViewer = () => {
+        navigate('/supervisor/claims');
+    };
+
+    const clearSearch = () => {
+        setIsSearchMode(false);
+        setSearchQuery('');
+        fetchClaims(activeTab);
+    };
+
+    const handleSearchClaims = () => {
+        if (!searchQuery.trim()) {
+            toast.info('Please enter a claim number to search');
+            return;
+        }
+        
+        setLoading(true);
+        
+        fetch(`${import.meta.env.VITE_API_URL}/api/claims/search?query=${searchQuery}`, {
+            headers: {
+                'Authorization': `Bearer ${user.token}`
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to search claims');
+            }
+            return response.json();
+        })
+        .then(data => {
+            setClaims(data);
+            setIsSearchMode(true);
+            setLoading(false);
+            
+            if (data.length === 0) {
+                toast.info(`No claims found matching "${searchQuery}"`);
+            } else {
+                toast.success(`Found ${data.length} claim(s) matching "${searchQuery}"`);
+            }
+        })
+        .catch(error => {
+            console.error('Error searching claims:', error);
+            toast.error('Error searching claims');
+            setLoading(false);
+        });
+    };
+
     if (showVideoCall && activeCall) {
+        // First try to find the claim from the claims array
         const associatedClaim = claims.find(
             claim => claim.ClaimId === incomingCall?.claimId || 
-                    claim.claimId === incomingCall?.claimId
+                    (activeCallData && claim.ClaimId === activeCallData.claimId)
         );
-        const claimNumber = getClaimNumber(associatedClaim || incomingCall);
+        
+        // Get the claim number
+        const claimNumber = getClaimNumber(associatedClaim || incomingCall || activeCallData);
+        
+        // Get the claim ID from the associated claim or from the call data
+        const claimId = associatedClaim?.ClaimId || 
+                        incomingCall?.claimId || 
+                        activeCallData?.claimId;
+
+        console.log("VideoCall props:", { 
+            role: "supervisor", 
+            callId: activeCall, 
+            claimNumber, 
+            claimId 
+        });
 
         return (
             <div className="video-call-fullscreen">
@@ -194,8 +328,21 @@ const ClaimManagement = () => {
                     socket={socket}
                     onEndCall={handleEndCall}
                     claimNumber={claimNumber}
+                    claimId={claimId}
+                    user={user}
                 />
             </div>
+        );
+    }
+
+    // Render media viewer if URL params indicate we should
+    if (isViewingMedia) {
+        return (
+            <MediaViewer
+                claimId={params.claimId}
+                mediaType={params.mediaType}
+                onClose={handleCloseMediaViewer}
+            />
         );
     }
 
@@ -219,20 +366,40 @@ const ClaimManagement = () => {
                 </div>
             </div>
             
+            {/* Search Results Banner */}
+            {isSearchMode && (
+                <div className="search-results-banner">
+                    <div className="search-info">
+                        <FaSearch />
+                        <span>Search results for: <strong>"{searchQuery}"</strong></span>
+                        <span className="result-count">({claims.length} results)</span>
+                    </div>
+                    <button className="clear-search-btn" onClick={clearSearch}>
+                        <FaTimes />
+                        <span>Clear Search</span>
+                    </button>
+                </div>
+            )}
+            
             {/* Tabs Navigation */}
             <div className="dashboard-tabs">
                 <div className="claims-tabs">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`tab ${activeTab === tab.id ? 'active' : ''}`}
+                            onClick={() => {
+                                if (isSearchMode) {
+                                    clearSearch();
+                                }
+                                setActiveTab(tab.id);
+                            }}
+                            className={`tab ${activeTab === tab.id && !isSearchMode ? 'active' : ''}`}
                         >
                             {tab.icon}
                             <span>{tab.label}</span>
-                            {!loading && claims.length > 0 && (
+                            {!loading && !isSearchMode && (
                                 <span className={`count ${activeTab === tab.id ? 'active' : ''}`}>
-                                    {claims.length}
+                                    {claimCounts[tab.id]}
                                 </span>
                             )}
                         </button>
@@ -323,6 +490,24 @@ const ClaimManagement = () => {
                                                 </button>
                                             </div>
                                         )}
+                                        {(claim.ClaimStatus === 'InvestigationCompleted') && (
+                                            <div className="claim-actions">
+                                                <button 
+                                                    className="action-btn view-videos-btn"
+                                                    onClick={() => handleViewVideos(claim)}
+                                                >
+                                                    <FaVideo size={14} />
+                                                    <span>View Videos</span>
+                                                </button>
+                                                <button 
+                                                    className="action-btn view-screenshots-btn"
+                                                    onClick={() => handleViewScreenshots(claim)}
+                                                >
+                                                    <FaCamera size={14} />
+                                                    <span>View Screenshots</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </motion.div>
                                 ))}
                             </AnimatePresence>
@@ -333,11 +518,20 @@ const ClaimManagement = () => {
 
             {/* Modals */}
             {showCreateForm && (
-                <CreateClaimForm 
+                <CreateClaimModal 
                     onClose={() => setShowCreateForm(false)}
-                    onClaimCreated={(newClaim) => {
-                        setClaims(prev => [newClaim, ...prev]);
+                    onCreated={(newClaim) => {
+                        // Close the modal first
                         setShowCreateForm(false);
+                        
+                        // Show success message
+                        toast.success('Claim created successfully');
+                        
+                        // Reload all claims to get the latest data
+                        fetchClaims(activeTab);
+                        
+                        // Also update all claim counts
+                        fetchClaimCounts();
                     }}
                 />
             )}

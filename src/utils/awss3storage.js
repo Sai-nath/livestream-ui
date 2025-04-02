@@ -142,6 +142,102 @@ export const uploadRecording = async (claimNumber, callId, videoBlob, metadata =
   }
 };
 
+// Document upload function
+export const uploadDocument = async (claimNumber, file, category, metadata = {}, progressCallback = null) => {
+  try {
+    if (!file) {
+      throw new Error("Document file is empty or undefined");
+    }
+
+    // Get file extension and determine content type
+    const fileName = file.name;
+    const fileExtension = fileName.split('.').pop().toLowerCase();
+    let contentType;
+
+    switch (fileExtension) {
+      case 'pdf':
+        contentType = 'application/pdf';
+        break;
+      case 'jpg':
+      case 'jpeg':
+        contentType = 'image/jpeg';
+        break;
+      case 'png':
+        contentType = 'image/png';
+        break;
+      case 'doc':
+        contentType = 'application/msword';
+        break;
+      case 'docx':
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        break;
+      case 'xls':
+        contentType = 'application/vnd.ms-excel';
+        break;
+      case 'xlsx':
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        break;
+      default:
+        contentType = 'application/octet-stream';
+    }
+
+    // Create a timestamp-based key for the file
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const key = `documents/claim-${claimNumber}/${category}/${timestamp}-${sanitizedFileName}`;
+
+    if (progressCallback) {
+      progressCallback(0);
+    }
+
+    // Convert file to array buffer
+    const arrayBuffer = await file.arrayBuffer();
+    const binaryData = new Uint8Array(arrayBuffer);
+
+    const s3Client = createS3Client();
+    const command = new PutObjectCommand({
+      Bucket: awsConfig.bucket,
+      Key: key,
+      Body: binaryData,
+      ContentType: contentType,
+      Metadata: {
+        claimNumber,
+        category,
+        fileName: sanitizedFileName,
+        fileSize: file.size.toString(),
+        fileType: contentType,
+        uploadedBy: metadata.uploadedBy || "unknown",
+        uploadTimestamp: metadata.uploadTimestamp || new Date().toISOString(),
+        description: metadata.description || "",
+        ...metadata
+      }
+    });
+
+    await s3Client.send(command);
+
+    if (progressCallback) {
+      progressCallback(100);
+    }
+
+    // Construct the S3 URL
+    const objectUrl = 'https://' + awsConfig.bucket + '.s3.' + awsConfig.region + '.amazonaws.com/' + key;
+    
+    return {
+      url: objectUrl,
+      key: key,
+      fileName: sanitizedFileName,
+      fileType: contentType,
+      fileSize: file.size,
+      category: category,
+      uploadedAt: new Date().toISOString()
+    };
+
+  } catch (error) {
+    console.error("Error uploading document:", error);
+    throw error;
+  }
+};
+
 // Start recording function
 export const startRecording = async (claimNumber, callId, mediaStream, options = {}) => {
   try {

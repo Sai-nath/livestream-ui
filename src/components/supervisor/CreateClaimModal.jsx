@@ -28,7 +28,19 @@ const CreateClaimModal = ({ onClose, onCreated }) => {
         setLoading(true);
 
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims`, {
+            // Generate a claim number if not provided
+            if (!formData.claimNumber) {
+                const date = new Date();
+                const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                formData.claimNumber = `CLM-${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}-${randomNum}`;
+            }
+
+            console.log('Submitting claim data:', formData);
+            
+            // Use the API URL from environment variables with fallback to our network IP
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://192.168.8.150:5000';
+            
+            const response = await fetch(`${apiUrl}/api/claims`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -46,14 +58,20 @@ const CreateClaimModal = ({ onClose, onCreated }) => {
             }
 
             const newClaim = await response.json();
+            console.log('Claim created successfully:', newClaim);
             onCreated(newClaim);
             toast.success('Claim created successfully');
         } catch (error) {
             console.error('Create claim error:', error);
             toast.error(error.message || 'Error creating claim');
+            // Don't close the modal on error so the user can try again
+            return;
         } finally {
             setLoading(false);
         }
+        
+        // Only close the modal if we successfully created the claim
+        onClose();
     };
 
     return (

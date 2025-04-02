@@ -10,10 +10,14 @@ import {
     FaSignOutAlt,
     FaTimes,
     FaHome,
-    FaIdCard
+    FaIdCard,
+    FaPalette,
+    FaFileAlt
 } from 'react-icons/fa';
 import AssignedClaims from './AssignedClaims';
 import Investigation from './Investigation';
+import OfflineDocs from './OfflineDocs';
+import ThemeToggle from '../common/ThemeToggle';
 import './InvestigatorDashboard.css';
 import { toast } from 'react-toastify';
 
@@ -119,6 +123,7 @@ const InvestigatorDashboard = () => {
                 </button>
                 <h1>iNube Claims</h1>
                 <div className="user-info">
+                    <ThemeToggle />
                     <FaUser />
                 </div>
             </header>
@@ -171,6 +176,11 @@ const InvestigatorDashboard = () => {
                             <span className="icon"><FaIdCard /></span>
                             <span className="title">My Profile</span>
                         </button>
+                        <div className="nav-item theme-toggle-item">
+                            <span className="icon"><FaPalette /></span>
+                            <span className="title">Theme</span>
+                            <ThemeToggle />
+                        </div>
                     </div>
                 </div>
 
@@ -197,6 +207,10 @@ const InvestigatorDashboard = () => {
                     <Route 
                         path="investigation/:investigationId" 
                         element={<Investigation />} 
+                    />
+                    <Route 
+                        path="claims/:claimId/docs" 
+                        element={<OfflineDocs />} 
                     />
                     <Route 
                         path="/" 
