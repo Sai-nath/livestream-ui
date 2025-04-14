@@ -49,9 +49,11 @@ export const AuthProvider = ({ children }) => {
             
             console.debug('AuthContext: Attempting login');
             
-            console.debug('AuthContext: Full API URL', `${import.meta.env.VITE_API_URL}/api/auth/login`);
+            // Bypass Static Web App routing by using the backend URL directly
+            const backendUrl = import.meta.env.VITE_API_URL;
+            console.debug('AuthContext: Using direct backend URL', `${backendUrl}/api/auth/login`);
             
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
+            const response = await fetch(`${backendUrl}/api/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -114,9 +116,11 @@ export const AuthProvider = ({ children }) => {
         try {
             console.debug('AuthContext: Attempting token refresh');
             
-            console.debug('AuthContext: Full refresh URL', `${import.meta.env.VITE_API_URL}/api/auth/refresh`);
+            // Bypass Static Web App routing by using the backend URL directly
+            const backendUrl = import.meta.env.VITE_API_URL;
+            console.debug('AuthContext: Using direct backend URL for refresh', `${backendUrl}/api/auth/refresh`);
             
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/refresh`, {
+            const response = await fetch(`${backendUrl}/api/auth/refresh`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

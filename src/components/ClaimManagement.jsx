@@ -34,9 +34,14 @@ const ClaimManagement = () => {
   const fetchClaims = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims`, {
+      // Use backend URL directly to bypass Static Web App routing
+      const backendUrl = import.meta.env.VITE_API_URL;
+      console.debug('ClaimManagement: Using direct backend URL', `${backendUrl}/api/claims`);
+      
+      const response = await fetch(`${backendUrl}/api/claims`, {
         headers: {
-          'Authorization': `Bearer ${user.token}`
+          'Authorization': `Bearer ${user.token}`,
+          'Origin': import.meta.env.VITE_APP_URL
         }
       });
       const data = await response.json();
