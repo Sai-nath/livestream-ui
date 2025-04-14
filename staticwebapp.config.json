@@ -1,5 +1,20 @@
 {
+  "platform": {
+    "apiRuntime": "node:18"
+  },
   "routes": [
+    {
+      "route": "/socket.io/*",
+      "allowedRoles": ["anonymous", "authenticated"],
+      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      "rewrite": "https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net/socket.io/$1"
+    },
+    {
+      "route": "/api/auth/login",
+      "allowedRoles": ["anonymous"],
+      "methods": ["POST", "OPTIONS"],
+      "rewrite": "https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net/api/auth/login"
+    },
     {
       "route": "/api/auth/*",
       "allowedRoles": ["anonymous", "authenticated"],
@@ -43,8 +58,11 @@
   "globalHeaders": {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Cache-Control": "no-cache"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+    "Access-Control-Allow-Credentials": "true",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1"
   },
   "mimeTypes": {
     ".json": "text/json"
