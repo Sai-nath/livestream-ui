@@ -1,11 +1,12 @@
 // API Configuration
 const getBaseUrl = () => {
-    // Using relative path to let Vite proxy handle the requests
-    return '';
+    // Use the environment variable for the API URL in production
+    // or fall back to relative path for local development
+    return import.meta.env.VITE_API_URL || '';
 };
 
 export const API_URL = getBaseUrl();
-export const SOCKET_URL = getBaseUrl();
+export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || getBaseUrl();
 
 // Authentication Configuration
 export const TOKEN_KEY = 'user_token';
