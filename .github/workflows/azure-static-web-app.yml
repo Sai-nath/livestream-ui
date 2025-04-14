@@ -44,12 +44,19 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Copy dist to build directory
+        run: |
+          echo "Copying dist to build directory..."
+          node copy-build.js
+
       - name: List build output
         run: |
           echo "Listing build output directories:"
           ls -la
           echo "Dist directory content:"
           ls -la dist
+          echo "Build directory content:"
+          ls -la build
 
       - name: Deploy
         id: builddeploy
@@ -60,9 +67,9 @@ jobs:
           action: "upload"
           app_location: "/"
           api_location: ""
-          output_location: "dist"
+          output_location: "build"
           config_file_location: "/" # Location of staticwebapp.config.json
-          skip_app_build: false # Let Azure build the app to ensure correct output location
+          skip_app_build: true # Skip Azure's build since we already built and copied to build/
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
