@@ -1,0 +1,49 @@
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy_job:
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set environment variables
+        run: |
+          echo "Setting production environment"
+          cp .env.production .env
+          echo "VITE_API_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env
+          echo "VITE_SOCKET_URL=wss://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env
+          echo "VITE_APP_URL=https://nice-sea-057f1c900.4.azurestaticapps.net" >> .env
+          echo "VITE_AWS_REGION=eu-north-1" >> .env
+          echo "VITE_AWS_S3_BUCKET=lvsbucket-5181" >> .env
+          echo "NODE_ENV=production" >> .env
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: "37b669f1ef7694c1a5e6c65b2d8a8fdfd08d6af9ded960aa67474da27237b8bc04-5d3e6332-84b9-4143-a437-a4ac5028515c0002403057f1c900"
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"
+          output_location: "dist"
+          skip_api_build: true
