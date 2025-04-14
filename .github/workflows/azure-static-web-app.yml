@@ -4,21 +4,28 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - master
   workflow_dispatch:
 
 jobs:
   build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: true
+          lfs: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18.x'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -29,7 +36,7 @@ jobs:
           cp .env.production .env
           echo "VITE_API_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env
           echo "VITE_SOCKET_URL=wss://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net" >> .env
-          echo "VITE_APP_URL=https://nice-sea-057f1c900.4.azurestaticapps.net" >> .env
+          echo "VITE_APP_URL=https://thankful-dune-06ac8a600.3.azurestaticapps.net" >> .env
           echo "VITE_AWS_REGION=eu-north-1" >> .env
           echo "VITE_AWS_S3_BUCKET=lvsbucket-5181" >> .env
           echo "NODE_ENV=production" >> .env
@@ -41,9 +48,21 @@ jobs:
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: "37b669f1ef7694c1a5e6c65b2d8a8fdfd08d6af9ded960aa67474da27237b8bc04-5d3e6332-84b9-4143-a437-a4ac5028515c0002403057f1c900"
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_THANKFUL_DUNE_06AC8A600 }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           app_location: "/"
           output_location: "dist"
-          skip_api_build: true
+          skip_app_build: true # We already built the app in the previous step
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_THANKFUL_DUNE_06AC8A600 }}
+          action: "close"
