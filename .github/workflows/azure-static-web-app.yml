@@ -61,6 +61,7 @@ jobs:
           app_location: "/"
           api_location: ""
           output_location: "dist"
+          config_file_location: "/" # Location of staticwebapp.config.json
           skip_app_build: false # Let Azure build the app to ensure correct output location
 
   close_pull_request_job:
