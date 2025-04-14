@@ -21,7 +21,7 @@ VITE_FRONTEND_URL=${networkConfig.frontend.url}
   const prodEnvContent = `# Production Environment Variables
 VITE_API_URL=https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net
 VITE_SOCKET_URL=wss://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net
-VITE_FRONTEND_URL=https://nice-sea-057f1c900.4.azurestaticapps.net
+VITE_FRONTEND_URL=https://thankful-dune-06ac8a600.6.azurestaticapps.net
 `;
 
   try {
