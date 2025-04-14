@@ -44,11 +44,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Create build directory and copy dist content
+      - name: Create build directory and copy optimized dist content
         run: |
-          echo "Creating build directory and copying dist content..."
+          echo "Creating build directory and copying optimized dist content..."
           mkdir -p build
-          cp -r dist/* build/
+          # Copy only essential files, excluding sourcemaps
+          cp -r dist/*.html build/
+          cp -r dist/assets build/
+          # Remove any source maps to reduce file count
+          find build -name "*.map" -type f -delete
 
       - name: List build output
         run: |
