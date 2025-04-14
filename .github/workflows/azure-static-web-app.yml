@@ -35,7 +35,7 @@ jobs:
           echo "VITE_APP_URL=https://thankful-dune-06ac8a600.3.azurestaticapps.net" >> .env
           echo "VITE_AWS_REGION=eu-north-1" >> .env
           echo "VITE_AWS_S3_BUCKET=lvsbucket-5181" >> .env
-          # Remove NODE_ENV from .env as it's not supported in Vite
+          # Explicitly tell Vite this is a production build via command line instead of .env
           cat .env
 
       - name: Build And Deploy
@@ -48,7 +48,7 @@ jobs:
           app_location: "/"
           api_location: ""
           output_location: "dist"
-          app_build_command: "npm run build"
+          app_build_command: "NODE_ENV=production npm run build"
           config_file_location: "/"
           skip_app_build: false
 

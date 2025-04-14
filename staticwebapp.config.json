@@ -1,6 +1,12 @@
 {
   "routes": [
     {
+      "route": "/api/auth/*",
+      "allowedRoles": ["anonymous", "authenticated"],
+      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      "rewrite": "https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net/api/auth/$1"
+    },
+    {
       "route": "/api/*",
       "allowedRoles": ["anonymous", "authenticated"],
       "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
