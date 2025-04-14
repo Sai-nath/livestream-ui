@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - '.env.production'
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
