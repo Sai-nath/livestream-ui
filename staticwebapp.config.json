@@ -3,7 +3,7 @@
     "apiRuntime": "node:18"
   },
   "networking": {
-    "allowedIpRanges": ["any"]
+    "allowedIpRanges": ["0.0.0.0/0"]
   },
   "routes": [
     {
