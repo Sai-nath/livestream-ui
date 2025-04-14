@@ -94,19 +94,37 @@ const VideoCall = ({ socket, role, callId, onEndCall, claimNumber, claimId }) =>
   // WebRTC configuration
   const configuration = {
     iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "stun:stun2.l.google.com:19302" },
       {
-        urls: "turn:global.turn.twilio.com:3478?transport=udp",
-        username: "your_twilio_username", // Replace with actual credentials from env vars
-        credential: "your_twilio_credential"
-      }
+        urls: [
+          'stun:livestreaming.inubesolutions.com:3478',
+          'stun:livestreaming.inubesolutions.com:5349',
+        ],
+      },
+      {
+        urls: [
+          'turn:livestreaming.inubesolutions.com:3478',
+          'turn:livestreaming.inubesolutions.com:5349',
+          'turn:livestreaming.inubesolutions.com:3478?transport=udp',
+          'turn:livestreaming.inubesolutions.com:5349?transport=udp',
+          'turn:livestreaming.inubesolutions.com:3478?transport=tcp',
+          'turn:livestreaming.inubesolutions.com:5349?transport=tcp',
+        ],
+        username: 'inube',
+        credential: 'inube@123',
+      },
     ],
+    sdpSemantics: 'unified-plan',
+    bundlePolicy: 'max-bundle',
+    iceTransportPolicy: 'all',
+    rtcpMuxPolicy: 'require',
     iceCandidatePoolSize: 10,
-    bundlePolicy: "max-bundle",
-    rtcpMuxPolicy: "require",
-    sdpSemantics: "unified-plan"
+    optional: [
+      {DtlsSrtpKeyAgreement: true},
+      {googIPv6: true},
+      {googDscp: true},
+      {googHighStartBitrate: true},
+      {googPayloadPadding: true},
+    ],
   };
 
   // Handle incoming socket events
