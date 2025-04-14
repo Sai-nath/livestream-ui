@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import networkConfig from '../config/network-config';
 
 const SocketContext = createContext();
 
@@ -44,10 +45,18 @@ export const SocketProvider = ({ children }) => {
 
     // Get the base URL based on the current environment
     const getBaseUrl = () => {
-      const networkUrl = import.meta.env.VITE_API_URL;
+      const socketUrl = import.meta.env.VITE_SOCKET_URL;
       const allowLocal = import.meta.env.VITE_ALLOW_LOCAL === 'true';
       const isLocalhost = window.location.hostname === 'localhost';
-      const baseUrl = isLocalhost && allowLocal ? 'http://localhost:5000' : networkUrl;
+      
+      // Use the dedicated socket URL from environment variables or network config
+      let baseUrl;
+      if (isLocalhost && allowLocal) {
+        baseUrl = networkConfig.backend.wsUrl;
+      } else {
+        baseUrl = socketUrl || networkConfig.backend.wsUrl;
+      }
+      
       logWithTimestamp('Using socket base URL:', baseUrl);
       return baseUrl;
     };
@@ -58,14 +67,29 @@ export const SocketProvider = ({ children }) => {
       reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 10000,
-      transports: ['websocket', 'polling'],
-      withCredentials: false,
-      path: '/socket.io',
+      timeout: 60000, // Significantly increased timeout
+      transports: ['websocket', 'polling'], // Prefer websocket first, fallback to polling
+      upgrade: true, // Enable transport upgrade
+      rememberUpgrade: true, // Remember the successful upgrade
+      withCredentials: true, // Enable credentials
+      path: '/socket.io/', // Make sure path ends with a slash
       autoConnect: true,
-      forceNew: true
+      forceNew: true,
+      rejectUnauthorized: false, // Ignore SSL certificate validation for self-signed certs
+      pingInterval: 25000, // Increase ping interval (default is 25000)
+      pingTimeout: 60000, // Increase ping timeout (default is 20000)
+      transportOptions: {
+        polling: {
+          extraHeaders: {
+            'User-Agent': 'LiveStreamingApp/1.0',
+            'X-Client-Version': '1.0.0'
+          }
+        }
+      }
     });
 
+    // Use imported network configuration
+    
     // Enhanced socket connection logging
     console.log(`Socket Connection Details:`, {
       baseUrl: getBaseUrl(),
@@ -73,7 +97,7 @@ export const SocketProvider = ({ children }) => {
       transport: socketInstance.io.engine?.transport?.name || 'initializing',
       authToken: user.token ? 'Present' : 'Missing',
       userId: user.id,
-      networkIP: '192.168.8.150'
+      networkIP: networkConfig.networkIP
     });
 
     // Connection event logging
@@ -94,24 +118,33 @@ export const SocketProvider = ({ children }) => {
     console.log(`Socket URL: ${socketInstance.io.uri}`);
     // Connection events
     socketInstance.on('connect', () => {
-      logWithTimestamp(`Socket connected successfully`, {
+      logWithTimestamp('Socket connected', { 
         socketId: socketInstance.id,
-        userId: user.id,
-        role: user.role,
-        connectionUrl: socketInstance.io.uri
+        userId: user.id
       });
       setIsConnected(true);
       setReconnectAttempts(0);
       
-      // Emit user's role for proper room assignment
-      logWithTimestamp(`Emitting userConnected event`, { 
-        userId: user.id, 
-        role: user.role 
-      });
-      socketInstance.emit('userConnected', { 
+      // Identify user to the server
+      socketInstance.emit('identify', {
         userId: user.id,
         role: user.role
       });
+      
+      // For investors, set up a more aggressive reconnection strategy
+      if (user.role === 'INVESTOR') {
+        // Set up ping interval to keep connection alive during streaming
+        const pingInterval = setInterval(() => {
+          if (socketInstance.connected) {
+            socketInstance.emit('ping_call', { callId: 'any', timestamp: Date.now() });
+          } else {
+            clearInterval(pingInterval);
+          }
+        }, 15000); // Send ping every 15 seconds
+        
+        // Store the interval in the socket instance for cleanup
+        socketInstance.pingInterval = pingInterval;
+      }
     });
 
     socketInstance.on('disconnect', () => {
@@ -208,18 +241,37 @@ export const SocketProvider = ({ children }) => {
       });
       setActivities(prev => [...prev, activity].slice(-100));
     });
-
+    
+    // Add heartbeat response handler
+    socketInstance.on('heartbeat', (data) => {
+      // Respond to server heartbeats to keep connection alive
+      socketInstance.emit('heartbeat_response', { timestamp: Date.now() });
+      
+      // Update user activity timestamp
+      if (user.role === 'INVESTOR') {
+        // For investors, we want to be more aggressive about keeping the connection alive
+        socketInstance.emit('ping_call', { callId: 'any', timestamp: Date.now() });
+      }
+    });
+    
     setSocket(socketInstance);
-
+    
+    // Clean up socket connection when component unmounts
     return () => {
-      clearInterval(pingInterval);
       if (socketInstance) {
-        logWithTimestamp('Cleaning up socket connection', { userId: user.id });
+        logWithTimestamp('Cleaning up socket connection on unmount');
+        
+        // Clear any intervals we've set
+        if (socketInstance.pingInterval) {
+          clearInterval(socketInstance.pingInterval);
+          socketInstance.pingInterval = null;
+        }
+        
         socketInstance.disconnect();
       }
     };
   }, [user?.id, user?.token]); // Depend on both user.id and user.token
-
+  
   // Socket event functions
   const trackActivity = useCallback((action, details) => {
     // Only track important activities
@@ -240,7 +292,7 @@ export const SocketProvider = ({ children }) => {
         action, 
         details,
         socketId: socket.id,
-        networkIP: '192.168.8.150' // Using the known network IP
+        networkIP: networkConfig.networkIP // Using the known network IP
       });
       socket.emit('activity', { type: action, content: details });
     } else if (!socketConnected) {
@@ -250,7 +302,7 @@ export const SocketProvider = ({ children }) => {
         details,
         socketExists: !!socket,
         socketConnected: socket?.connected,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
       
       // If socket exists but is disconnected, set up a one-time handler for reconnection
@@ -270,18 +322,24 @@ export const SocketProvider = ({ children }) => {
     const socketConnected = socket && socket.connected;
     
     if (socketConnected) {
+      // Import network configuration
+      const networkConfig = require('../config/network-config');
+      
       logWithTimestamp('Joining stream', { 
         streamId,
         socketId: socket.id,
-        networkIP: '192.168.8.150' // Using the known network IP
+        networkIP: networkConfig.networkIP
       });
       socket.emit('stream:join', { streamId });
     } else {
+      // Import network configuration
+      const networkConfig = require('../config/network-config');
+      
       logWithTimestamp('Cannot join stream - socket not connected', { 
         streamId,
         socketExists: !!socket,
         socketConnected: socket?.connected,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
     }
   }, [socket]);
@@ -293,7 +351,7 @@ export const SocketProvider = ({ children }) => {
       logWithTimestamp('Leaving stream', { 
         streamId,
         socketId: socket.id,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
       socket.emit('stream:leave', { streamId });
     } else {
@@ -301,7 +359,7 @@ export const SocketProvider = ({ children }) => {
         streamId,
         socketExists: !!socket,
         socketConnected: socket?.connected,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
     }
   }, [socket]);
@@ -313,7 +371,7 @@ export const SocketProvider = ({ children }) => {
       logWithTimestamp('Starting stream', {
         ...streamDetails,
         socketId: socket.id,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
       socket.emit('stream:start', streamDetails);
     } else {
@@ -321,7 +379,7 @@ export const SocketProvider = ({ children }) => {
         streamDetails,
         socketExists: !!socket,
         socketConnected: socket?.connected,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
     }
   }, [socket]);
@@ -333,7 +391,7 @@ export const SocketProvider = ({ children }) => {
       logWithTimestamp('Ending stream', { 
         streamId,
         socketId: socket.id,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
       socket.emit('stream:end', { streamId });
     } else {
@@ -341,7 +399,7 @@ export const SocketProvider = ({ children }) => {
         streamId,
         socketExists: !!socket,
         socketConnected: socket?.connected,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
     }
   }, [socket]);
@@ -354,7 +412,7 @@ export const SocketProvider = ({ children }) => {
         streamId, 
         message,
         socketId: socket.id,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
       socket.emit('stream:message', { streamId, message });
     } else {
@@ -363,7 +421,7 @@ export const SocketProvider = ({ children }) => {
         messageLength: message?.length,
         socketExists: !!socket,
         socketConnected: socket?.connected,
-        networkIP: '192.168.8.150'
+        networkIP: networkConfig.networkIP
       });
     }
   }, [socket]);

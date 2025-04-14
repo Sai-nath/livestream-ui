@@ -1,0 +1,498 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { 
+  FaDownload, 
+  FaPlay, 
+  FaTimes, 
+  FaChevronLeft, 
+  FaChevronRight, 
+  FaSearch,
+  FaImage,
+  FaVideo,
+  FaExclamationCircle,
+  FaCloudDownloadAlt,
+  FaAws
+} from 'react-icons/fa';
+import { loadMediaWithFallback, getS3UrlForMedia } from '../../utils/mediaLoader';
+import './MediaViewer.css';
+
+const MediaViewer = ({ claimId, mediaType, onClose }) => {
+  const [mediaItems, setMediaItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [loadingStatuses, setLoadingStatuses] = useState({});  // Track loading status for each media item
+  const [mediaErrors, setMediaErrors] = useState({});        // Track errors for each media item
+  const [fallbackUsed, setFallbackUsed] = useState({});    // Track which items used fallback
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchMedia();
+  }, [claimId, mediaType]);
+
+  const fetchMedia = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims/${claimId}/${mediaType}`, {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${mediaType}: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Process the media items to add URLs and other properties
+      const processedItems = data.map(item => {
+        // Check if the item already has a direct URL to the media in cloud storage
+        // Support both AWS S3 and Azure Blob Storage URLs
+        const directUrl = item.MediaUrl && (
+          item.MediaUrl.includes('s3.') || 
+          item.MediaUrl.includes('blob.core.windows.net') ||
+          item.MediaUrl.includes('claims-documents')
+        ) ? item.MediaUrl : null;
+        
+        // Create an API URL as fallback
+        const apiUrl = `${import.meta.env.VITE_API_URL}/api/media/download/${item.MediaId}?token=${encodeURIComponent(user.token)}`;
+        
+        // Use the direct URL if available, otherwise use the API URL
+        const mediaUrl = directUrl || apiUrl;
+        
+        // Add a timestamp to prevent caching issues
+        const timestamp = new Date().getTime();
+        const urlWithTimestamp = mediaUrl.includes('?') 
+          ? `${mediaUrl}&_t=${timestamp}` 
+          : `${mediaUrl}?_t=${timestamp}`;
+        
+        return {
+          ...item,
+          MediaUrl: urlWithTimestamp,
+          directUrl: directUrl ? (directUrl.includes('?') ? `${directUrl}&_t=${timestamp}` : `${directUrl}?_t=${timestamp}`) : null,
+          apiUrl: `${apiUrl}&_t=${timestamp}`
+        };
+      });
+      
+      console.log(`Loaded ${processedItems.length} ${mediaType} items:`, 
+        processedItems.map(item => ({
+          id: item.MediaId,
+          hasDirectUrl: !!item.directUrl,
+          timestamp: item.Timestamp
+        })));
+      
+      setMediaItems(processedItems);
+    } catch (err) {
+      console.error(`Error fetching ${mediaType}:`, err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown date';
+    
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const openLightbox = (item, index) => {
+    setCurrentIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => {
+    setLightboxOpen(false);
+  };
+
+  const navigateLightbox = (direction) => {
+    const newIndex = currentIndex + direction;
+    if (newIndex >= 0 && newIndex < mediaItems.length) {
+      setCurrentIndex(newIndex);
+    }
+  };
+
+  const handleDownload = async (e, mediaUrl, mediaId) => {
+    e.stopPropagation();
+    
+    try {
+      // Determine file extension based on media type
+      const extension = mediaType === 'videos' ? 'mp4' : 'jpg';
+      const filename = `${mediaType.slice(0, -1)}-${mediaId}.${extension}`;
+      
+      // We're already using the proxy URL from the MediaUrl property
+      const response = await fetch(mediaUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download: ${response.statusText}`);
+      }
+      
+      // Convert response to blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element to trigger download
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Error downloading media:', err);
+      alert(`Failed to download: ${err.message}`);
+    }
+  };
+
+  const renderVideoGrid = () => {
+    return (
+      <div className="media-grid video-grid">
+        {mediaItems.map((video, index) => (
+          <div key={video.MediaId} className="video-item" onClick={() => openLightbox(video, index)}>
+            <div className="video-thumbnail">
+              {loadingStatuses[video.MediaId] === 'loading' && (
+                <div className="loading-overlay">
+                  <div className="loading-spinner"></div>
+                </div>
+              )}
+              
+              {mediaErrors[video.MediaId] && (
+                <div className="error-overlay">
+                  <FaExclamationCircle />
+                  <span>Video unavailable</span>
+                </div>
+              )}
+              
+              <div className="video-preview">
+                <FaPlay className="play-icon" />
+              </div>
+              
+              {/* Show AWS icon if using direct S3 URL */}
+              {!fallbackUsed[video.MediaId] && (
+                <div className="fallback-indicator" title="Loading from AWS S3">
+                  <FaAws />
+                </div>
+              )}
+            </div>
+            <div className="video-info">
+              <div className="video-title">Video {index + 1}</div>
+              <div className="video-date">{formatDate(video.Timestamp)}</div>
+              <button
+                className="download-button"
+                onClick={(e) => handleDownload(e, video.MediaUrl, video.MediaId)}
+                title="Download video"
+              >
+                <FaDownload />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderScreenshotGrid = () => {
+    return (
+      <div className="media-grid screenshot-grid">
+        {mediaItems.map((screenshot, index) => {
+          // Log the URL to verify it's correct
+          console.log(`Rendering screenshot with URL: ${screenshot.MediaUrl}`);
+          
+          return (
+            <div key={screenshot.MediaId} className="screenshot-item" onClick={() => openLightbox(screenshot, index)}>
+              <div className="screenshot-thumbnail">
+                {loadingStatuses[screenshot.MediaId] === 'loading' && (
+                  <div className="loading-overlay">
+                    <div className="loading-spinner"></div>
+                  </div>
+                )}
+                
+                {mediaErrors[screenshot.MediaId] && (
+                  <div className="error-overlay">
+                    <FaExclamationCircle />
+                    <span>Media unavailable</span>
+                  </div>
+                )}
+                
+                <img
+                  src={screenshot.MediaUrl} // Use the S3 URL directly from the database
+                  alt={`Screenshot ${index + 1}`}
+                  className="screenshot-preview"
+                  onLoadStart={() => {
+                    setLoadingStatuses(prev => ({...prev, [screenshot.MediaId]: 'loading'}));
+                  }}
+                  onLoad={() => {
+                    console.log(`Successfully loaded image from URL: ${screenshot.MediaUrl}`);
+                    setLoadingStatuses(prev => ({...prev, [screenshot.MediaId]: 'loaded'}));
+                  }}
+                  onError={(e) => {
+                    console.error(`Error loading screenshot from URL: ${screenshot.MediaUrl}`, e);
+                    e.target.onerror = null; // Prevent infinite error loop
+                    
+                    // Try loading from API as fallback
+                    if (!fallbackUsed[screenshot.MediaId]) {
+                      const apiUrl = `${import.meta.env.VITE_API_URL}/api/media/download/${screenshot.MediaId}?token=${encodeURIComponent(user.token)}`;
+                      console.log(`Attempting to load image from API fallback: ${apiUrl}`);
+                      setFallbackUsed(prev => ({...prev, [screenshot.MediaId]: true}));
+                      
+                      // Try the API URL directly
+                      e.target.src = apiUrl;
+                    } else {
+                      // Fallback already attempted
+                      setLoadingStatuses(prev => ({...prev, [screenshot.MediaId]: 'error'}));
+                      setMediaErrors(prev => ({...prev, [screenshot.MediaId]: 'Failed to load image'}));
+                      e.target.src = '/image-placeholder.png'; // Fallback image
+                    }
+                  }}
+                  crossOrigin="anonymous" // Add CORS attribute for cross-origin images
+                />
+                
+                {/* Show AWS icon if using direct S3 URL */}
+                {!fallbackUsed[screenshot.MediaId] && (
+                  <div className="fallback-indicator" title="Loading from AWS S3">
+                    <FaAws />
+                  </div>
+                )}
+              </div>
+              <div className="screenshot-info">
+                <div className="screenshot-title">Screenshot {index + 1}</div>
+                <div className="screenshot-date">{formatDate(screenshot.Timestamp)}</div>
+                <button
+                  className="download-button"
+                  onClick={(e) => handleDownload(e, screenshot.MediaUrl, screenshot.MediaId)}
+                  title="Download screenshot"
+                >
+                  <FaDownload />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderLightbox = () => {
+    if (!lightboxOpen || mediaItems.length === 0) return null;
+    
+    const currentItem = mediaItems[currentIndex];
+    const mediaId = currentItem.MediaId;
+    
+    return (
+      <div className="lightbox-overlay" onClick={closeLightbox}>
+        <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+          <button className="lightbox-close" onClick={closeLightbox}>
+            <FaTimes />
+          </button>
+          
+          <div className="lightbox-navigation">
+            <button 
+              className="lightbox-nav-button prev"
+              onClick={() => navigateLightbox(-1)}
+              disabled={currentIndex === 0}
+            >
+              <FaChevronLeft />
+            </button>
+            
+            <div className="lightbox-counter">
+              {currentIndex + 1} / {mediaItems.length}
+            </div>
+            
+            <button 
+              className="lightbox-nav-button next"
+              onClick={() => navigateLightbox(1)}
+              disabled={currentIndex === mediaItems.length - 1}
+            >
+              <FaChevronRight />
+            </button>
+          </div>
+          
+          <div className="lightbox-media-container">
+            {mediaType === 'videos' ? (
+              <video 
+                className="lightbox-video" 
+                controls 
+                autoPlay
+                src={currentItem.MediaUrl}
+                onLoadStart={() => {
+                  setLoadingStatuses(prev => ({...prev, [mediaId]: 'loading'}));
+                }}
+                onLoadedData={() => {
+                  setLoadingStatuses(prev => ({...prev, [mediaId]: 'loaded'}));
+                }}
+                onError={(e) => {
+                  console.error(`Error loading video:`, e);
+                  e.target.onerror = null; // Prevent infinite error loop
+                  
+                  // Try loading from API fallback
+                  if (!fallbackUsed[mediaId]) {
+                    const apiUrl = `${import.meta.env.VITE_API_URL}/api/media/download/${mediaId}?token=${encodeURIComponent(user.token)}`;
+                    console.log(`Attempting to load video from API fallback: ${apiUrl}`);
+                    setFallbackUsed(prev => ({...prev, [mediaId]: true}));
+                    
+                    // Try the API URL directly
+                    e.target.src = apiUrl;
+                  } else {
+                    // Fallback already attempted
+                    setLoadingStatuses(prev => ({...prev, [mediaId]: 'error'}));
+                    setMediaErrors(prev => ({...prev, [mediaId]: 'Failed to load video'}));
+                  }
+                }}
+                crossOrigin="anonymous"
+              />
+            ) : (
+              <img 
+                className="lightbox-image" 
+                src={currentItem.MediaUrl}
+                alt={`Media ${currentIndex + 1}`}
+                onLoad={() => {
+                  setLoadingStatuses(prev => ({...prev, [mediaId]: 'loaded'}));
+                }}
+                onError={(e) => {
+                  console.error(`Error loading image:`, e);
+                  
+                  // Try loading from API fallback
+                  if (!fallbackUsed[mediaId]) {
+                    const apiUrl = `${import.meta.env.VITE_API_URL}/api/media/download/${mediaId}?token=${encodeURIComponent(user.token)}`;
+                    console.log(`Attempting to load image from API fallback: ${apiUrl}`);
+                    setFallbackUsed(prev => ({...prev, [mediaId]: true}));
+                    
+                    // Try the API URL directly
+                    e.target.src = apiUrl;
+                  } else {
+                    // Fallback already attempted
+                    setLoadingStatuses(prev => ({...prev, [mediaId]: 'error'}));
+                    setMediaErrors(prev => ({...prev, [mediaId]: 'Failed to load image'}));
+                    e.target.src = '/image-placeholder.png'; // Fallback image
+                  }
+                }}
+                crossOrigin="anonymous"
+              />
+            )}
+          </div>
+          
+          <div className="lightbox-info">
+            <div className="lightbox-timestamp">{formatDate(currentItem.Timestamp)}</div>
+            {fallbackUsed[mediaId] ? (
+              <div className="lightbox-source api">Using API Source</div>
+            ) : (
+              <div className="lightbox-source s3">Using S3 Source <FaAws /></div>
+            )}
+          </div>
+          
+          <div className="lightbox-footer">
+            <button 
+              className="lightbox-download"
+              onClick={(e) => handleDownload(e, currentItem.MediaUrl, currentItem.MediaId)}
+            >
+              <FaDownload /> Download {mediaType === 'videos' ? 'Video' : 'Screenshot'}
+            </button>
+            
+            {/* Add a button to explicitly try API fallback if not already using it */}
+            {!fallbackUsed[mediaId] && (
+              <button 
+                className="lightbox-fallback"
+                onClick={() => {
+                  const apiUrl = `${import.meta.env.VITE_API_URL}/api/media/download/${mediaId}?token=${encodeURIComponent(user.token)}`;
+                  setFallbackUsed(prev => ({...prev, [mediaId]: true}));
+                  
+                  // Update the media source to use the API URL
+                  if (mediaType === 'videos') {
+                    const videoElement = document.querySelector('.lightbox-video');
+                    if (videoElement) {
+                      videoElement.src = apiUrl;
+                      videoElement.load();
+                    }
+                  } else {
+                    const imgElement = document.querySelector('.lightbox-image');
+                    if (imgElement) {
+                      imgElement.src = apiUrl;
+                    }
+                  }
+                }}
+              >
+                <FaCloudDownloadAlt /> Try API Source
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderLoading = () => (
+    <div className="loading-container">
+      <div className="loading-spinner"></div>
+      <p>Loading {mediaType}...</p>
+    </div>
+  );
+
+  const renderError = () => (
+    <div className="error-container">
+      <FaExclamationCircle size={40} color="#e11d48" />
+      <p className="error-message">{error}</p>
+      <button 
+        className="retry-button"
+        onClick={fetchMedia}
+      >
+        Try Again
+      </button>
+    </div>
+  );
+
+  const renderEmptyState = () => (
+    <div className="empty-state">
+      {mediaType === 'videos' ? (
+        <FaVideo className="empty-icon" />
+      ) : (
+        <FaImage className="empty-icon" />
+      )}
+      <h3>No {mediaType} found</h3>
+      <p>There are no {mediaType} available for this claim.</p>
+    </div>
+  );
+
+  return (
+    <div className="media-viewer">
+      <div className="media-viewer-header">
+        <h3>{mediaType === 'videos' ? 'Videos' : 'Screenshots'} for Claim #{claimId}</h3>
+        <button className="close-button" onClick={onClose}>
+          <FaTimes />
+        </button>
+      </div>
+      
+      <div className="media-viewer-content">
+        {loading ? (
+          renderLoading()
+        ) : error ? (
+          renderError()
+        ) : mediaItems.length === 0 ? (
+          renderEmptyState()
+        ) : (
+          mediaType === 'videos' ? renderVideoGrid() : renderScreenshotGrid()
+        )}
+      </div>
+      
+      {renderLightbox()}
+    </div>
+  );
+};
+
+export default MediaViewer;

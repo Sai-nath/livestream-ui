@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
+import networkConfig from './vite-network-config.js'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -11,24 +12,36 @@ export default defineConfig(({ mode }) => {
   const devConfig = {
     plugins: [react()],
     server: {
-      host: '0.0.0.0',  // Allow connections from all network interfaces
-      port: 3000,
+      host: networkConfig.networkIP,  // Use the centralized network IP
+      port: networkConfig.frontend.port,
       https: fs.existsSync('.cert/key.pem') && fs.existsSync('.cert/cert.pem') ? {
         key: fs.readFileSync('.cert/key.pem'),
         cert: fs.readFileSync('.cert/cert.pem'),
       } : undefined,
       proxy: {
         '/api': {
-          target: 'https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net',
+          target: networkConfig.backend.url,
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path
         },
         '/socket.io': {
-          target: 'https://livestreaming-fjghamgvdsdbd7ct.centralindia-01.azurewebsites.net',
+          target: networkConfig.backend.wsUrl,
           changeOrigin: true,
           secure: false,
-          ws: true
+          ws: true,
+          rewrite: (path) => path,
+          configure: (proxy, options) => {
+            proxy.on('error', (err, req, res) => {
+              console.log('proxy error', err);
+            });
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              console.log('Sending Request to the Target:', req.method, req.url);
+            });
+            proxy.on('proxyRes', (proxyRes, req, res) => {
+              console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
+            });
+          }
         }
       }
     }
