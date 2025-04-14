@@ -2,29 +2,56 @@
   "platform": {
     "apiRuntime": "node:18"
   },
+  "networking": {
+    "allowedIpRanges": ["any"]
+  },
   "routes": [
     {
       "route": "/socket.io/*",
       "allowedRoles": ["anonymous", "authenticated"],
       "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Credentials": "true"
+      },
       "rewrite": "https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net/socket.io/$1"
     },
     {
       "route": "/api/auth/login",
       "allowedRoles": ["anonymous"],
       "methods": ["POST", "OPTIONS"],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Credentials": "true"
+      },
       "rewrite": "https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net/api/auth/login"
     },
     {
       "route": "/api/auth/*",
       "allowedRoles": ["anonymous", "authenticated"],
       "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Credentials": "true"
+      },
       "rewrite": "https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net/api/auth/$1"
     },
     {
       "route": "/api/*",
       "allowedRoles": ["anonymous", "authenticated"],
       "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Credentials": "true"
+      },
       "rewrite": "https://livestreamingclaims-hpaedbd6b6gbhkb0.centralindia-01.azurewebsites.net/api/$1"
     },
     {

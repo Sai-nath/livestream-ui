@@ -49,10 +49,13 @@ export const AuthProvider = ({ children }) => {
             
             console.debug('AuthContext: Attempting login');
             
+            console.debug('AuthContext: Full API URL', `${import.meta.env.VITE_API_URL}/api/auth/login`);
+            
             const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Origin': import.meta.env.VITE_APP_URL,
                 },
                 body: JSON.stringify({ email, password }),
                 credentials: 'include'
@@ -111,11 +114,14 @@ export const AuthProvider = ({ children }) => {
         try {
             console.debug('AuthContext: Attempting token refresh');
             
+            console.debug('AuthContext: Full refresh URL', `${import.meta.env.VITE_API_URL}/api/auth/refresh`);
+            
             const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/refresh`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}`
+                    'Authorization': `Bearer ${user.token}`,
+                    'Origin': import.meta.env.VITE_APP_URL
                 },
                 credentials: 'include'
             });
