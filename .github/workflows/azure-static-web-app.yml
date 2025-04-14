@@ -44,10 +44,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Copy dist to build directory
+      - name: Create build directory and copy dist content
         run: |
-          echo "Copying dist to build directory..."
-          node copy-build.js
+          echo "Creating build directory and copying dist content..."
+          mkdir -p build
+          cp -r dist/* build/
 
       - name: List build output
         run: |
