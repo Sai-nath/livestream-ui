@@ -44,6 +44,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: List build output
+        run: |
+          echo "Listing build output directories:"
+          ls -la
+          echo "Dist directory content:"
+          ls -la dist
+
       - name: Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
@@ -52,8 +59,9 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           app_location: "/"
+          api_location: ""
           output_location: "dist"
-          skip_app_build: true # We already built the app in the previous step
+          skip_app_build: false # Let Azure build the app to ensure correct output location
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
