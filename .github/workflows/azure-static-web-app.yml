@@ -69,7 +69,6 @@ jobs:
           app_location: "/"
           api_location: ""
           output_location: "build"
-          config_file_location: "/" # Location of staticwebapp.config.json
           skip_app_build: true # Skip Azure's build since we already built and copied to build/
 
   close_pull_request_job:
