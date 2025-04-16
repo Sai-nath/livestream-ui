@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../../contexts/SocketContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
@@ -32,6 +32,29 @@ const ClaimManagement = () => {
     const [isSearchMode, setIsSearchMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     
+    // Pagination state
+    const [pagination, setPagination] = useState({
+        currentPage: 1,
+        pageSize: 6,  // Show 6 claims per page (2 rows of 3)
+        totalItems: 0,
+        totalPages: 1
+    });
+    
+    // Filtering and sorting state
+    const [filterText, setFilterText] = useState('');
+    const [debouncedFilterText, setDebouncedFilterText] = useState('');
+    const [sortBy, setSortBy] = useState('CreatedAt');
+    const [sortOrder, setSortOrder] = useState('desc');
+    
+    // Debounce filter text changes
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedFilterText(filterText);
+        }, 500);
+        
+        return () => clearTimeout(timer);
+    }, [filterText]);
+    
     const { trackActivity, isConnected, socket } = useSocket();
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -55,23 +78,93 @@ const ClaimManagement = () => {
         return `CLAIM-${Date.now()}`;
     };
 
+    // Use a ref to track if we need to fetch data
+    const shouldFetchRef = useRef(true);
+    
+    // Single useEffect to handle all data fetching
     useEffect(() => {
-        // Check if we have search results from the global search
+        // Skip initial fetch when component mounts if we have search results
         if (location.state?.searchResults) {
             setClaims(location.state.searchResults);
             setSearchQuery(location.state.searchQuery);
             setIsSearchMode(true);
             setLoading(false);
+            shouldFetchRef.current = false;
             
             // Clear the location state to prevent showing search results after refresh
             navigate(location.pathname, { replace: true });
-        } else {
-            // If not in search mode, fetch claims normally
+        } else if (shouldFetchRef.current) {
+            // Only fetch if we should (prevents duplicate fetches)
             fetchClaims(activeTab);
             fetchClaimCounts();
         }
-    }, [location, activeTab]);
+        
+        // Reset the fetch flag for next dependency change
+        shouldFetchRef.current = true;
+    }, [location, activeTab, pagination.currentPage, debouncedFilterText]);
     
+    // Function to render page number buttons
+    const renderPageNumbers = () => {
+        const pageNumbers = [];
+        const totalPages = pagination.totalPages;
+        const currentPage = pagination.currentPage;
+        
+        // Always show first page
+        if (totalPages > 0) {
+            pageNumbers.push(
+                <button 
+                    key={1} 
+                    className={`pagination-page-btn ${currentPage === 1 ? 'active' : ''}`}
+                    onClick={() => setPagination(prev => ({...prev, currentPage: 1}))}
+                    disabled={currentPage === 1}
+                >
+                    1
+                </button>
+            );
+        }
+        
+        // Show ellipsis if needed
+        if (currentPage > 3) {
+            pageNumbers.push(<span key="ellipsis1" className="pagination-ellipsis">...</span>);
+        }
+        
+        // Show pages around current page
+        for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+            if (i === 1 || i === totalPages) continue; // Skip first and last pages as they're always shown
+            pageNumbers.push(
+                <button 
+                    key={i} 
+                    className={`pagination-page-btn ${currentPage === i ? 'active' : ''}`}
+                    onClick={() => setPagination(prev => ({...prev, currentPage: i}))}
+                    disabled={currentPage === i}
+                >
+                    {i}
+                </button>
+            );
+        }
+        
+        // Show ellipsis if needed
+        if (currentPage < totalPages - 2) {
+            pageNumbers.push(<span key="ellipsis2" className="pagination-ellipsis">...</span>);
+        }
+        
+        // Always show last page if there's more than one page
+        if (totalPages > 1) {
+            pageNumbers.push(
+                <button 
+                    key={totalPages} 
+                    className={`pagination-page-btn ${currentPage === totalPages ? 'active' : ''}`}
+                    onClick={() => setPagination(prev => ({...prev, currentPage: totalPages}))}
+                    disabled={currentPage === totalPages}
+                >
+                    {totalPages}
+                </button>
+            );
+        }
+        
+        return pageNumbers;
+    };
+
     // Function to fetch counts for all claim statuses
     const fetchClaimCounts = async () => {
         try {
@@ -136,29 +229,155 @@ const ClaimManagement = () => {
             // Map the 'Submitted' tab to 'InvestigationCompleted'
             const statusFilter = status === 'Submitted' ? 'InvestigationCompleted' : status;
             console.log('Fetching claims with status:', statusFilter);
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/claims?status=${statusFilter}`, {
-                headers: {
-                    'Authorization': `Bearer ${user.token}`
+            
+            // Build query parameters for pagination, filtering, and sorting
+            const queryParams = new URLSearchParams({
+                status: statusFilter,
+                page: pagination.currentPage,
+                limit: pagination.pageSize,
+                sortBy: sortBy,
+                sortOrder: sortOrder
+            });
+            
+            // Add search/filter parameter if provided
+            if (debouncedFilterText && debouncedFilterText.trim() !== '') {
+                // Encode the search text to prevent special characters causing issues
+                queryParams.append('search', encodeURIComponent(debouncedFilterText.trim()));
+            }
+            
+            // Get the API URL from environment variables
+            const apiUrl = import.meta.env.VITE_API_URL;
+            console.log('API URL:', apiUrl);
+            console.log('Fetching claims with params:', queryParams.toString());
+            
+            // Ensure we have a valid API URL
+            if (!apiUrl) {
+                throw new Error('API URL is not defined in environment variables');
+            }
+            
+            // Use different endpoints based on the status and user role
+            let endpoint = '/api/claims';
+            
+            // Use the assigned claims endpoint for the Assigned tab
+            if (status === 'Assigned') {
+                // For supervisors, use the standard endpoint with status filter
+                // For investigators, use the specialized assigned claims endpoint
+                if (user.role === 'investigator') {
+                    endpoint = '/api/claims/assigned';
+                    // For assigned endpoint, we don't need the status parameter
+                    queryParams.delete('status');
                 }
+                // Otherwise keep using the standard endpoint with status filter
+            }
+            
+            // Use a more reliable way to construct the URL
+            const url = new URL(endpoint, apiUrl);
+            // Append search params to the URL
+            url.search = queryParams.toString();
+            
+            console.log('Full request URL:', url.toString());
+            
+            const response = await fetch(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${user.token}`,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                cache: 'no-cache'
             });
             
             if (!response.ok) {
-                throw new Error('Failed to fetch claims');
+                const errorText = await response.text();
+                console.error('API Error:', response.status, errorText);
+                throw new Error(`Failed to fetch claims: ${response.status} ${errorText.substring(0, 100)}`);
             }
 
             const data = await response.json();
-            const claimsArray = Array.isArray(data) ? data : [];
-            setClaims(claimsArray);
+            console.log('API response data:', data);
             
-            if (claimsArray.length > 0) {
-                trackActivity('CLAIMS_FETCHED', { status, count: claimsArray.length });
+            // Ensure we're working with valid data
+            if (!data) {
+                console.error('Received null or undefined data from API');
+                throw new Error('Invalid data received from server');
             }
             
-            // Update the count for the current tab
-            setClaimCounts(prev => ({
-                ...prev,
-                [status]: claimsArray.length
-            }));
+            // Normalize the data structure to handle different API response formats
+            let claimsArray = [];
+            let totalItems = 0;
+            let currentPage = pagination.currentPage;
+            let pageSize = pagination.pageSize;
+            let totalPages = 1;
+            
+            // Handle different response formats
+            if (data.data && data.totalItems !== undefined) {
+                // Standard paginated response format
+                claimsArray = Array.isArray(data.data) ? data.data : [];
+                totalItems = data.totalItems || 0;
+                currentPage = data.currentPage || 1;
+                pageSize = data.pageSize || pagination.pageSize;
+                totalPages = data.totalPages || 1;
+            } else if (Array.isArray(data)) {
+                // Direct array response
+                claimsArray = data;
+                totalItems = data.length;
+                totalPages = Math.ceil(data.length / pageSize) || 1;
+            } else if (typeof data === 'object') {
+                // Handle case where data is an object but not in expected format
+                // Try to extract claims from any property that might be an array
+                const possibleArrays = Object.values(data).filter(val => Array.isArray(val));
+                if (possibleArrays.length > 0) {
+                    // Use the first array found
+                    claimsArray = possibleArrays[0];
+                    totalItems = claimsArray.length;
+                    totalPages = Math.ceil(claimsArray.length / pageSize) || 1;
+                } else {
+                    // Last resort: try to convert the object to an array if possible
+                    console.warn('Unexpected data format:', data);
+                    claimsArray = [];
+                }
+            }
+            
+            // Ensure claimsArray is always an array to prevent 'sort is not a function' errors
+            if (!Array.isArray(claimsArray)) {
+                console.error('Claims data is not an array after normalization:', claimsArray);
+                claimsArray = [];
+            }
+            
+            // Update state with normalized data
+            setClaims(claimsArray);
+            setPagination({
+                currentPage,
+                pageSize,
+                totalItems,
+                totalPages
+            });
+            
+            // Handle tracking and counts based on the response format
+            if (data.data && data.totalItems !== undefined) {
+                // For paginated response
+                if (data.data.length > 0) {
+                    trackActivity('CLAIMS_FETCHED', { status, count: data.totalItems });
+                }
+                
+                // Update the count for the current tab with the total items
+                setClaimCounts(prev => ({
+                    ...prev,
+                    [status]: data.totalItems || 0
+                }));
+            } else {
+                // For non-paginated response
+                const claimsArray = Array.isArray(data) ? data : [];
+                if (claimsArray.length > 0) {
+                    trackActivity('CLAIMS_FETCHED', { status, count: claimsArray.length });
+                }
+                
+                // Update the count for the current tab with the array length
+                setClaimCounts(prev => ({
+                    ...prev,
+                    [status]: claimsArray.length
+                }));
+            }
         } catch (error) {
             console.error('Error fetching claims:', error);
             setError(error.message);
@@ -392,6 +611,10 @@ const ClaimManagement = () => {
                                     clearSearch();
                                 }
                                 setActiveTab(tab.id);
+                                // Reset pagination when changing tabs
+                                setPagination(prev => ({...prev, currentPage: 1}));
+                                // Clear filter text
+                                setFilterText('');
                             }}
                             className={`tab ${activeTab === tab.id && !isSearchMode ? 'active' : ''}`}
                         >
@@ -406,6 +629,66 @@ const ClaimManagement = () => {
                     ))}
                 </div>
             </div>
+            
+            {/* Filter Bar */}
+            {!isSearchMode && (
+                <div className="filter-bar">
+                    <div className="search-container">
+                        <div className="search-input-wrapper">
+                            <FaSearch className="search-icon" size={14} />
+                            <input
+                                type="text"
+                                placeholder="Search claims by number, policy, or customer..."
+                                value={filterText}
+                                onChange={(e) => {
+                                    setFilterText(e.target.value);
+                                    // Reset to first page when searching
+                                    setPagination(prev => ({...prev, currentPage: 1}));
+                                }}
+                                className="filter-input"
+                            />
+                        </div>
+                        {filterText && (
+                            <button 
+                                className="clear-filter-button"
+                                onClick={() => {
+                                    setFilterText('');
+                                    setPagination(prev => ({...prev, currentPage: 1}));
+                                    fetchClaims(activeTab);
+                                }}
+                            >
+                                <FaTimes size={14} />
+                                <span>Clear</span>
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div className="sort-container">
+                        <select 
+                            value={sortBy} 
+                            onChange={(e) => {
+                                setSortBy(e.target.value);
+                                fetchClaims(activeTab);
+                            }}
+                            className="sort-select"
+                        >
+                            <option value="CreatedAt">Created Date</option>
+                            <option value="ClaimNumber">Claim Number</option>
+                            <option value="CustomerName">Customer Name</option>
+                            <option value="PolicyNumber">Policy Number</option>
+                        </select>
+                        <button 
+                            className="sort-direction-button"
+                            onClick={() => {
+                                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                                fetchClaims(activeTab);
+                            }}
+                        >
+                            {sortOrder === 'asc' ? '↑' : '↓'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Claims Content */}
             <div className="claims-content">
@@ -511,6 +794,59 @@ const ClaimManagement = () => {
                                     </motion.div>
                                 ))}
                             </AnimatePresence>
+                            
+                            {/* Pagination Controls */}
+                            {!isSearchMode && pagination.totalPages > 1 && (
+                                <div className="pagination-container">
+                                    <div className="pagination-controls">
+                                        <div className="pagination-info-summary">
+                                            Showing <span className="pagination-highlight">{((pagination.currentPage - 1) * pagination.pageSize) + 1}-{Math.min(pagination.currentPage * pagination.pageSize, pagination.totalItems)}</span> of <span className="pagination-highlight">{pagination.totalItems}</span> claims
+                                        </div>
+                                        
+                                        <div className="pagination-buttons">
+                                            <button 
+                                                className="pagination-nav-btn"
+                                                disabled={pagination.currentPage === 1}
+                                                onClick={() => setPagination(prev => ({...prev, currentPage: 1}))}
+                                                title="First Page"
+                                            >
+                                                <span className="pagination-icon">«</span>
+                                            </button>
+                                            
+                                            <button 
+                                                className="pagination-nav-btn"
+                                                disabled={pagination.currentPage === 1}
+                                                onClick={() => setPagination(prev => ({...prev, currentPage: prev.currentPage - 1}))}
+                                                title="Previous Page"
+                                            >
+                                                <span className="pagination-icon">‹</span>
+                                            </button>
+                                            
+                                            <div className="pagination-pages">
+                                                {renderPageNumbers()}
+                                            </div>
+                                            
+                                            <button 
+                                                className="pagination-nav-btn"
+                                                disabled={pagination.currentPage === pagination.totalPages}
+                                                onClick={() => setPagination(prev => ({...prev, currentPage: prev.currentPage + 1}))}
+                                                title="Next Page"
+                                            >
+                                                <span className="pagination-icon">›</span>
+                                            </button>
+                                            
+                                            <button 
+                                                className="pagination-nav-btn"
+                                                disabled={pagination.currentPage === pagination.totalPages}
+                                                onClick={() => setPagination(prev => ({...prev, currentPage: prev.totalPages}))}
+                                                title="Last Page"
+                                            >
+                                                <span className="pagination-icon">»</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 })()}

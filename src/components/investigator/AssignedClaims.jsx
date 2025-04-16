@@ -211,10 +211,41 @@ const AssignedClaims = ({ onlineUsers, isUserOnline }) => {
             const data = await response.json();
             console.log('Fetched claims from API:', JSON.stringify(data, null, 2));
     
-            // Sort by assignedAt descending (most recent first) until ClaimNumber is available
-            const sortedData = data.sort((a, b) => {
-                return new Date(b.assignedAt) - new Date(a.assignedAt);
-            });
+            // Ensure data is an array before sorting
+            let claimsArray = [];
+            
+            // Handle different response formats
+            if (data && Array.isArray(data)) {
+                claimsArray = data;
+            } else if (data && data.data && Array.isArray(data.data)) {
+                claimsArray = data.data;
+            } else if (data && typeof data === 'object') {
+                // Try to extract claims from any property that might be an array
+                const possibleArrays = Object.values(data).filter(val => Array.isArray(val));
+                if (possibleArrays.length > 0) {
+                    claimsArray = possibleArrays[0];
+                } else {
+                    console.warn('Unexpected data format:', data);
+                    claimsArray = [];
+                }
+            } else {
+                console.error('Invalid data format received:', data);
+                claimsArray = [];
+            }
+            
+            // Sort by assignedAt descending (most recent first) if we have valid data
+            const sortedData = claimsArray.length > 0 ? claimsArray.sort((a, b) => {
+                // Handle different property name cases (camelCase vs PascalCase)
+                const dateA = a.assignedAt || a.AssignedAt;
+                const dateB = b.assignedAt || b.AssignedAt;
+                
+                // Ensure we have valid dates before comparing
+                if (!dateA && !dateB) return 0;
+                if (!dateA) return 1;  // b comes first if a has no date
+                if (!dateB) return -1; // a comes first if b has no date
+                
+                return new Date(dateB) - new Date(dateA);
+            }) : claimsArray;
     
             setClaims(sortedData);
             setFilteredClaims(sortedData);
